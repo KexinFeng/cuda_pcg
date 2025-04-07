@@ -1,0 +1,109 @@
+#include <torch/extension.h>
+#include "cuda_pcg.h"
+
+__global__ void add_kernel(const float* a, const float* b, float* out, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        out[idx] = a[idx] + b[idx];
+    }
+}
+
+torch::Tensor add_tensors(torch::Tensor a, torch::Tensor b) {
+    auto output = torch::zeros_like(a);
+    int size = a.numel();
+
+    const int threads = 1024;
+    const int blocks = (size + threads - 1) / threads;
+
+    add_kernel<<<blocks, threads>>>(
+        a.data_ptr<float>(),
+        b.data_ptr<float>(),
+        output.data_ptr<float>(),
+        size
+    );
+
+    return output;
+}
+
+__global__ void pcg_kernel(const float* A, const float* b, float* x, int n, int max_iter) {
+    // Placeholder for PCG algorithm implementation
+    // This is where the actual PCG algorithm would be implemented
+    // For now, we just copy b to x as a placeholder
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        x[idx] = b[idx];
+    }
+}
+
+torch::Tensor pcg(torch::Tensor A, torch::Tensor b, int max_iter) {
+    int n = A.size(0);
+    auto x = torch::zeros_like(b);
+
+    const int threads = 1024;
+    const int blocks = (n + threads - 1) / threads;
+
+    pcg_kernel<<<blocks, threads>>>(
+        A.data_ptr<float>(),
+        b.data_ptr<float>(),
+        x.data_ptr<float>(),
+        n,
+        max_iter
+    );
+
+    return x;
+}
+
+torch::Tensor pcg(
+    torch::Tensor i_lists,  // [4, Vs/2] start site of each family
+    torch::Tensor j_lists,  // [4, Vs/2] end site of each family
+    torch::Tensor boson,    // [bs, Ltau * Vs * 2] float32, U(1) configuration
+    torch::Tensor psi_u,    // [bs, Ltau * Vs] complex64
+    torch::Tensor precon,   // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
+    int Lx, 
+    int Ltau, 
+    int max_iter, 
+    double rtol) 
+{
+    // Ensure `precon` is a sparse CSR tensor
+    TORCH_CHECK(precon.is_sparse_csr(), "precon must be a torch.sparse.csr tensor");
+
+    // --- Create cuSPARSE and cuBLAS handles and CUDA stream ---
+    cusparseHandle_t cusparseHandle;
+    CHECK_CUSPARSE(cusparseCreate(&cusparseHandle));
+    cublasHandle_t cublasHandle;
+    CHECK_CUBLAS(cublasCreate(&cublasHandle));
+
+    cudaStream_t stream;
+    CHECK_CUDA(cudaStreamCreate(&stream));
+    CHECK_CUSPARSE(cusparseSetStream(cusparseHandle, stream));
+    CHECK_CUBLAS(cublasSetStream(cublasHandle, stream));
+
+    // --- Create a cuSPARSE sparse matrix descriptor for A ---
+    cusparseSpMatDescr_t matA;
+    CHECK_CUSPARSE(cusparseCreateMatCsr(&matA));
+    // --- Create dense vector descriptors for p and Ap (used in SpMV) ---
+    cusparseDnVecDescr_t vecP, vecAp;
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, Lx*Lx*Ltau, d_p, CUDA_C_64F));
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, Lx*Lx*Ltau, d_Ap, CUDA_C_64F));
+
+    // --- Allocate an external buffer for cusparseSpMV ---
+    size_t bufferSize = 0;
+    void* dBuffer = NULL;
+    cuDoubleComplex spmvAlpha = make_cuDoubleComplex(1.0, 0.0);
+    cuDoubleComplex spmvBeta  = make_cuDoubleComplex(0.0, 0.0);
+    CHECK_CUSPARSE(cusparseSpMV_bufferSize(cusparseHandle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
+        CUDA_C_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+    CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
+
+    // --- Perform the SpMV operation ---
+    CHECK_CUSPARSE(cusparseSpMV(cusparseHandle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
+        CUDA_C_64F, CUSPARSE_SPMV_ALG_DEFAULT, dBuffer));
+
+    // Implement the PCG algorithm here
+    // Placeholder implementation
+    return torch::zeros({Lx, Lx, Ltau}, torch::TensorOptions().dtype(torch::kFloat32));
+}

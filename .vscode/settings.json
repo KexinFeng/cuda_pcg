@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "/users/4/fengx463/mount_folder/awsome_project",
+        "/users/4/fengx463/hmc/qed_fermion/qed_fermion"
+    ]
+}
