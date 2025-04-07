@@ -4,8 +4,6 @@
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("add_tensors", &add_tensors, "Add two tensors (CUDA)");
+    m.def("pcg", &pcg, "Preconditioned Conjugate Gradient (CUDA)");
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("pcg", &add_tensors, "Preconditioned Conjugate Gradient (CUDA)");
-}

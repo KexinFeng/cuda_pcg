@@ -25,3 +25,53 @@ tensor_add_cuda = load(
     verbose=True
 )
 This way, you don’t need to run setup.py every time. Great for debugging!
+
+
+nvcc -o pcg_cuda cuda_pcg.cu -lcusparse -lcublas
+
+nvcc -o pcg_cuda cuda_pcg.cu -lcusparse -lcublas -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include -L/users/4/fengx463/.local/lib/python3.9/site-packages/torch/lib -ltorch -ltorch_cpu
+
+nvcc -o pcg_cuda cuda_pcg.cu -lcusparse -lcublas -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include/torch/csrc/api/include -L/users/4/fengx463/.local/lib/python3.9/site-packages/torch/lib -ltorch -ltorch_cpu
+
+nvcc -o pcg_cuda cuda_pcg.cu \
+    -lcusparse -lcublas \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include/torch/csrc/api/include \
+    -L/users/4/fengx463/.local/lib/python3.9/site-packages/torch/lib \
+    -ltorch -ltorch_cpu \
+    --std=c++17 \
+    -I/common/software/install/migrated/anaconda/python3-2021.11-mamba/include/python3.9
+
+nvcc -o cuda_pcg.o -c csrs/cuda_pcg.cu \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include/torch/csrc/api/include \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include/THC \
+    -I/common/software/install/manual/cuda/12.0/include \
+    -I/common/software/install/migrated/anaconda/python3-2021.11-mamba/include/python3.9 \
+    --compiler-options '-fPIC' --std=c++17
+
+# Step 1: Compile cuda_pcg.cu into an object file
+nvcc -c -o cuda_pcg.o cuda_pcg.cu \
+    -I/path/to/libtorch/include \
+    -I/path/to/libtorch/include/torch/csrc/api/include \
+    -L/path/to/libtorch/lib \
+    -lcusparse \
+    -lcublas \
+    -lcudart \
+    -std=c++17
+
+# Step 2: Compile main.cpp and link with cuda_pcg.o
+g++ -o main csrs/main.cpp cuda_pcg.o \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include \
+    -I/users/4/fengx463/.local/lib/python3.9/site-packages/torch/include/torch/csrc/api/include \
+    -L/users/4/fengx463/.local/lib/python3.9/site-packages/torch/lib \
+    -I/common/software/install/manual/cuda/12.0/include \
+    -I/common/software/install/migrated/anaconda/python3-2021.11-mamba/include/python3.9 \
+    -ltorch \
+    -ltorch_cpu \
+    -lc10 \
+    -lcusparse \
+    -lcublas -lcudart -std=c++17
+
+
+

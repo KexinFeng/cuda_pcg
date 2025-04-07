@@ -1,5 +1,43 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <cuda_runtime.h>
+#include <cusparse.h>
+#include <cublas_v2.h>
+#include <cuComplex.h>
+
 #include <torch/extension.h>
 #include "cuda_pcg.h"
+
+
+// Error-checking macros
+#define CHECK_CUDA(call) {                                                 \
+    cudaError_t err = call;                                                \
+    if (err != cudaSuccess) {                                              \
+        fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__,      \
+                cudaGetErrorString(err));                                  \
+        exit(EXIT_FAILURE);                                                \
+    }                                                                      \
+}
+
+#define CHECK_CUSPARSE(call) {                                             \
+    cusparseStatus_t status = call;                                        \
+    if (status != CUSPARSE_STATUS_SUCCESS) {                               \
+        fprintf(stderr, "CUSPARSE error %s:%d: %d\n", __FILE__, __LINE__,   \
+                status);                                                   \
+        exit(EXIT_FAILURE);                                                \
+    }                                                                      \
+}
+
+#define CHECK_CUBLAS(call) {                                               \
+    cublasStatus_t status = call;                                          \
+    if (status != CUBLAS_STATUS_SUCCESS) {                                 \
+        fprintf(stderr, "CUBLAS error %s:%d: %d\n", __FILE__, __LINE__,     \
+                status);                                                   \
+        exit(EXIT_FAILURE);                                                \
+    }                                                                      \
+}
+
 
 __global__ void add_kernel(const float* a, const float* b, float* out, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;

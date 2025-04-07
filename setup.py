@@ -10,12 +10,16 @@ extension_sources = [
 ]
 
 extension = CUDAExtension(
-    name="qed_fermion._C",  # output name
+    name="qed_fermion_module._C",  # output name
     sources=extension_sources,
-    # extra_compile_args={
-    #     "cxx": CXX_FLAGS,
-    #     "nvcc": NVCC_FLAGS,
-    # },
+    extra_compile_args={
+        "cxx": [],  # Add any C++ specific flags if needed
+        "nvcc": [
+            "-I/common/software/install/manual/cuda/12.0/include",  # Include CUDA headers
+        ],
+    },
+    libraries=["cudart", "cusparse", "cublas"],  # Link against CUDA libraries
+    library_dirs=["/common/software/install/manual/cuda/12.0/lib64"],  # Path to CUDA libraries
 )
 ext_modules.append(extension)
 
