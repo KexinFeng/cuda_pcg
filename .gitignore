@@ -21,6 +21,7 @@ build/
 Thumbs.db
 
 # IDE-specific files
-.vscode/
+# .vscode/
 .idea/
 *.iml
+*.so
