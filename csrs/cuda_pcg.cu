@@ -78,13 +78,35 @@ torch::Tensor pcg(
     CHECK_CUSPARSE(cusparseSetStream(cusparseHandle, stream));
     CHECK_CUBLAS(cublasSetStream(cublasHandle, stream));
 
-    // --- Create a cuSPARSE sparse matrix descriptor for A ---
+    // --- Convert `precon` to cuSPARSE CSR format ---
+    auto precon_crow_indices = precon.crow_indices();
+    auto precon_col_indices = precon.col_indices();
+    auto precon_values = precon.values();
+
+    const int64_t* d_crow_indices = precon_crow_indices.data_ptr<int64_t>();
+    const int64_t* d_col_indices = precon_col_indices.data_ptr<int64_t>();
+    const cuDoubleComplex* d_values = reinterpret_cast<const cuDoubleComplex*>(precon_values.data_ptr<std::complex<double>>());
+
     cusparseSpMatDescr_t matA;
-    CHECK_CUSPARSE(cusparseCreateMatCsr(&matA));
-    // --- Create dense vector descriptors for p and Ap (used in SpMV) ---
+    CHECK_CUSPARSE(cusparseCreateCsr(
+        &matA,
+        precon.size(0), precon.size(1), precon_values.size(0),
+        const_cast<int64_t*>(d_crow_indices),
+        const_cast<int64_t*>(d_col_indices),
+        const_cast<cuDoubleComplex*>(d_values),
+        CUSPARSE_INDEX_64I, CUSPARSE_INDEX_64I,
+        CUSPARSE_INDEX_BASE_ZERO, CUDA_C_64F));
+
+    // --- Convert `psi_u` to cuSPARSE dense vector format ---
+    const cuDoubleComplex* d_p = reinterpret_cast<const cuDoubleComplex*>(psi_u.data_ptr<std::complex<double>>());
+
     cusparseDnVecDescr_t vecP, vecAp;
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, Lx*Lx*Ltau, d_p, CUDA_C_64F));
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, Lx*Lx*Ltau, d_Ap, CUDA_C_64F));
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuDoubleComplex*>(d_p), CUDA_C_64F));
+
+    // Allocate memory for Ap (output of SpMV)
+    auto Ap = torch::zeros_like(psi_u);
+    cuDoubleComplex* d_Ap = reinterpret_cast<cuDoubleComplex*>(Ap.data_ptr<std::complex<double>>());
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, psi_u.numel(), d_Ap, CUDA_C_64F));
 
     // --- Allocate an external buffer for cusparseSpMV ---
     size_t bufferSize = 0;
@@ -103,7 +125,6 @@ torch::Tensor pcg(
         &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
         CUDA_C_64F, CUSPARSE_SPMV_ALG_DEFAULT, dBuffer));
 
-    // Implement the PCG algorithm here
-    // Placeholder implementation
-    return torch::zeros({Lx, Lx, Ltau}, torch::TensorOptions().dtype(torch::kFloat32));
+    // Return the result of SpMV (Ap)
+    return Ap;
 }

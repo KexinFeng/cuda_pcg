@@ -38,8 +38,8 @@ precon = hmc.precon
 # precon_ind = precon.indices()
 # precon_val = precon.values()
 # precon_sz = precon.size()
-i_lists = [hmc.i_list_1, hmc.i_list_2, hmc.i_list_3, hmc.i_list_4]
-j_lists = [hmc.j_list_1, hmc.j_list_2, hmc.j_list_3, hmc.j_list_4]
+i_lists = [torch.stack(hmc.i_list_1), torch.stack(hmc.i_list_2), torch.stack(hmc.i_list_3), torch.stack(hmc.i_list_4)]
+j_lists = [torch.stack(hmc.j_list_1), torch.stack(hmc.j_list_2), torch.stack(hmc.j_list_3), torch.stack(hmc.j_list_4)]
 
 max_iter = 50
 qed_fermion._C.pcg(i_lists, 
