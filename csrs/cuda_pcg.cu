@@ -7,6 +7,7 @@
 #include <cuComplex.h>
 
 #include <torch/extension.h>
+#include <c10/util/complex.h>
 #include "cuda_pcg.h"
 
 
@@ -123,7 +124,7 @@ torch::Tensor pcg(
 
     const int64_t* d_crow_indices = precon_crow_indices.data_ptr<int64_t>();
     const int64_t* d_col_indices = precon_col_indices.data_ptr<int64_t>();
-    const cuDoubleComplex* d_values = reinterpret_cast<const cuDoubleComplex*>(precon_values.data_ptr<std::complex<double>>());
+    const cuDoubleComplex* d_values = reinterpret_cast<const cuDoubleComplex*>(precon_values.data_ptr<c10::complex<double>>());
 
     cusparseSpMatDescr_t matA;
     CHECK_CUSPARSE(cusparseCreateCsr(
@@ -136,14 +137,14 @@ torch::Tensor pcg(
         CUSPARSE_INDEX_BASE_ZERO, CUDA_C_64F));
 
     // --- Convert `psi_u` to cuSPARSE dense vector format ---
-    const cuDoubleComplex* d_p = reinterpret_cast<const cuDoubleComplex*>(psi_u.data_ptr<std::complex<double>>());
+    const cuDoubleComplex* d_p = reinterpret_cast<const cuDoubleComplex*>(psi_u.data_ptr<c10::complex<double>>());
 
     cusparseDnVecDescr_t vecP, vecAp;
     CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuDoubleComplex*>(d_p), CUDA_C_64F));
 
     // Allocate memory for Ap (output of SpMV)
     auto Ap = torch::zeros_like(psi_u);
-    cuDoubleComplex* d_Ap = reinterpret_cast<cuDoubleComplex*>(Ap.data_ptr<std::complex<double>>());
+    cuDoubleComplex* d_Ap = reinterpret_cast<cuDoubleComplex*>(Ap.data_ptr<c10::complex<double>>());
     CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, psi_u.numel(), d_Ap, CUDA_C_64F));
 
     // --- Allocate an external buffer for cusparseSpMV ---

@@ -4,7 +4,7 @@ sys.path.insert(0, '/users/4/fengx463/mount_folder/awsome_project')
 sys.path.insert(0, '/users/4/fengx463/hmc/qed_fermion/qed_fermion')
 
 import torch
-import qed_fermion_module
+import qed_fermion_module._C as core
 from hmc_sampler_batch import HmcSampler
 
 
@@ -14,7 +14,7 @@ b = torch.randn(3, 3, device='cuda')
 print("Tensor A:", a)
 print("Tensor B:", b)
 
-result = qed_fermion_module._C.add_tensors(a, b)
+result = core.add_tensors(a, b)
 print("Result (A + B):", result)
 
 # HMC inputs
@@ -34,6 +34,7 @@ R_u = hmc.draw_psudo_fermion().view(-1, 1)  # cdtype
 
 psi_u = R_u
 
+hmc.reset_precon()
 precon = hmc.precon
 # precon_ind = precon.indices()
 # precon_val = precon.values()
@@ -48,13 +49,14 @@ j_lists = torch.stack([hmc.j_list_1,
                        hmc.j_list_4])
 
 max_iter = 50
-qed_fermion_module._C.pcg(i_lists, 
-                   j_lists,
-                   boson, 
-                   psi_u, 
-                   precon, 
-                   Lx, Ltau, max_iter, 1e-6
+result = core.pcg(i_lists, 
+        j_lists,
+        boson, 
+        psi_u, 
+        precon, 
+        Lx, Ltau, max_iter, 1e-6
 )
+print("Result of PCG:", result[:10], result.shape)
 
 
 
