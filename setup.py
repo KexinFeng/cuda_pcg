@@ -6,8 +6,8 @@ import torch
 CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12.0")
 
 # FLAGS
-CXX_FLAGS = ["-g", "-O3", "-std=c++17", "-fPIC"]
-NVCC_FLAGS = ["-O3", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
+CXX_FLAGS = ["-g", "-O1", "-fPIC", "-std=c++17"]
+NVCC_FLAGS = ["-O1", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
