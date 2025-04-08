@@ -124,7 +124,7 @@ torch::Tensor pcg(
 
     const int64_t* d_crow_indices = precon_crow_indices.data_ptr<int64_t>();
     const int64_t* d_col_indices = precon_col_indices.data_ptr<int64_t>();
-    const cuDoubleComplex* d_values = reinterpret_cast<const cuDoubleComplex*>(precon_values.data_ptr<c10::complex<double>>());
+    const cuComplex* d_values = reinterpret_cast<const cuComplex*>(precon_values.data_ptr<c10::complex<float>>());
 
     cusparseSpMatDescr_t matA;
     CHECK_CUSPARSE(cusparseCreateCsr(
@@ -132,26 +132,26 @@ torch::Tensor pcg(
         precon.size(0), precon.size(1), precon_values.size(0),
         const_cast<int64_t*>(d_crow_indices),
         const_cast<int64_t*>(d_col_indices),
-        const_cast<cuDoubleComplex*>(d_values),
+        const_cast<cuComplex*>(d_values),
         CUSPARSE_INDEX_64I, CUSPARSE_INDEX_64I,
         CUSPARSE_INDEX_BASE_ZERO, CUDA_C_64F));
 
     // --- Convert `psi_u` to cuSPARSE dense vector format ---
-    const cuDoubleComplex* d_p = reinterpret_cast<const cuDoubleComplex*>(psi_u.data_ptr<c10::complex<double>>());
+    const cuComplex* d_p = reinterpret_cast<const cuComplex*>(psi_u.data_ptr<c10::complex<float>>());
 
     cusparseDnVecDescr_t vecP, vecAp;
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuDoubleComplex*>(d_p), CUDA_C_64F));
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuComplex*>(d_p), CUDA_C_64F));
 
     // Allocate memory for Ap (output of SpMV)
     auto Ap = torch::zeros_like(psi_u);
-    cuDoubleComplex* d_Ap = reinterpret_cast<cuDoubleComplex*>(Ap.data_ptr<c10::complex<double>>());
+    cuComplex* d_Ap = reinterpret_cast<cuComplex*>(Ap.data_ptr<c10::complex<float>>());
     CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, psi_u.numel(), d_Ap, CUDA_C_64F));
 
     // --- Allocate an external buffer for cusparseSpMV ---
     size_t bufferSize = 0;
     void* dBuffer = NULL;
-    cuDoubleComplex spmvAlpha = make_cuDoubleComplex(1.0, 0.0);
-    cuDoubleComplex spmvBeta  = make_cuDoubleComplex(0.0, 0.0);
+    cuComplex spmvAlpha = make_cuComplex(1.0, 0.0);
+    cuComplex spmvBeta  = make_cuComplex(0.0, 0.0);
     CHECK_CUSPARSE(cusparseSpMV_bufferSize(cusparseHandle,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
