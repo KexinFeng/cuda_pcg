@@ -25,3 +25,5 @@ Thumbs.db
 .idea/
 *.iml
 *.so
+
+__pycache__/
