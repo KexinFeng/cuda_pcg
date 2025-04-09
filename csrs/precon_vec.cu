@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <cuComplex.h>
-
 #include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <c10/util/complex.h>
 #include "cuda_pcg.h"
 
@@ -81,10 +80,10 @@ __global__ void precon_vec_kernel(
     if (tx >= blockDim.x - PAD) { // Right halo
         int idx_tau_pad = (idx_tau + PAD) % Ltau;
         int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
-        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - int row_start_pad; 
+        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
-            s_col[tx + 2*PAD, i] = precon_col[int row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-            s_val[tx + 2*PAD, i] = precon_val[int row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+            s_col[tx + 2*PAD, i] = precon_col[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+            s_val[tx + 2*PAD, i] = precon_val[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
         }
     }
     __syncthreads();
@@ -98,26 +97,37 @@ __global__ void precon_vec_kernel(
 }
 } // namespace cuda_pcg
 
-torch::Tensor precon_vec(
-    torch::Tensor d_r,        // [bs, Ltau * Vs] complex64
-    torch::Tensor precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
+void precon_vec(
+    const torch::Tensor& d_r,        // [bs, Ltau * Vs] complex64
+    const torch::Tensor& precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
+    torch::Tensor& out,
     int Lx) 
 {
     TORCH_CHECK(d_r.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(precon.is_cuda(), "Kernel must be a CUDA tensor");
 
-    auto out = torch::empty_like(d_r);
-
+    // auto out = torch::empty_like(d_r);
+    auto precon_crow = precon.crow_indices();
+    auto precon_col = precon.col_indices();
+    auto precon_val = precon.values();
+    
     auto bs = d_r.size(0);
     auto Vs = Lx * Lx;  // typically 10x10 = 100, up to 24x24 = 576
     auto Ltau = precon.size(0) / Vs;  // typically 400, up to 24x40 = 960
     
     dim3 block = {BLOCK_WIDTH};  
-    int num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
+    auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
     dim3 grid = {num_blocks, Vs};
 
-    // using scalar_t = c10::complex<float>;  
-    using scalar_t = d_r.scalar_type(); 
+    using scalar_t = cuFloatComplex;  // Default declaration
+    if (d_r.dtype() == at::ScalarType::ComplexFloat) {
+        using scalar_t = cuFloatComplex; 
+    } else if (d_r.dtype() == at::ScalarType::ComplexDouble) {
+        using scalar_t = cuDoubleComplex;
+    } else {
+        throw std::invalid_argument("Unsupported data type");
+    }
+
     int dyn_shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
                         + sizeof(scalar_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_val
                         + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
@@ -138,5 +148,4 @@ torch::Tensor precon_vec(
         throw std::runtime_error("CUDA kernel execution failed");
         return; 
     }
-
 }
