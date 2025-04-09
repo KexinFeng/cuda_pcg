@@ -7,9 +7,17 @@ import torch
 import qed_fermion_module._C as core
 from hmc_sampler_batch import HmcSampler
 
+from torch.utils.cpp_extension import load
+import torch
+# Load the CUDA extension
+_C = load(
+    name="_C",
+    sources=["csrs/pybind.cpp", "csrs/precon_vec.cu"],
+    verbose=True
+)
 
 # HMC inputs
-Lx, Ly, Ltau = 2, 2, 40
+Lx, Ly, Ltau = 4, 4, 40
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
 
@@ -20,7 +28,7 @@ hmc.reset_precon()
 precon = hmc.precon.to_sparse_csr().to(torch.complex64)
 # out = torch.zeros_like(psi_u, dtype=torch.complex64)
 
-out = core.precon_vec(psi_u, 
+out = _C.precon_vec(psi_u, 
                 precon,
                 Lx)
 print("Result of PCG:", out[:10], out.shape)

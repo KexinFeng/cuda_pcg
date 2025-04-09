@@ -39,10 +39,10 @@ __global__ void precon_vec_kernel(
     __shared__ scalar_t s_input_tile[TILE_SIZE];
 
     int tx = threadIdx.x; 
-    int idx_tau = blockIdx.x * blockDim.x + tx;  // global temporal idx: [blockIdx.x, threadIdx.x]
+    int idx_tau = blockIdx.y * blockDim.y + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
     if (idx_tau >= Ltau) return;
 
-    int idx_site = blockIdx.y;
+    int idx_site = blockIdx.x;
     int stride_vs = Lx * Lx;
     if (idx_site >= stride_vs) return;
 
@@ -63,9 +63,6 @@ __global__ void precon_vec_kernel(
     int row_start = precon_crow[idx_tau * stride_vs + idx_site];
     int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
     for (int i = 0; i < row_size; ++i) {
-        // int tau_shift = i - Num_ENTRY_PER_ROW / 2;  // [-6, ..., 0, ..., 6]
-        // s_col[PAD + tx, i] = precon_col[precon_crow[idx_tau * stride_vs + idx_site] + (idx_tau + tau_shift)%Ltau * stride_vs + idx_site]  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat, 
-        // `(idx_tau + tau_shift)%Ltau * stride_vs` would be used if a row were not compressed.
         s_col[PAD + tx][i] = precon_col[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
         s_val[PAD + tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
     }
@@ -93,8 +90,8 @@ __global__ void precon_vec_kernel(
     // Compute the output
     // ... 
 
-    if (tx == 0 && blockIdx.x == 0) {
-        printf("Debug: Code reached here. BlockIdx.x: %d, ThreadIdx.x: %d\n", blockIdx.x, tx);
+    if (tx == 0 && blockIdx.y == 0) {
+        printf("Debug: Code reached here. BlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
     }
 }
 } // namespace cuda_pcg
@@ -121,7 +118,7 @@ torch::Tensor precon_vec(
     
     dim3 block = {BLOCK_WIDTH};  
     auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
-    dim3 grid = {num_blocks, Vs};
+    dim3 grid = {Vs, num_blocks};
 
     // Verify that grid/block sizes are within device limits using:
     cudaDeviceProp prop;
@@ -142,7 +139,7 @@ torch::Tensor precon_vec(
     int shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
                         + sizeof(scalar_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_val
                         + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
-                        * block.x;           
+                        * BLOCK_WIDTH;           
 
     printf("Shared memory requirement per block: %d bytes\n", shared_mem);
 
