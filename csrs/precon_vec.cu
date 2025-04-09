@@ -33,8 +33,8 @@ __global__ void precon_vec_kernel(
     const int bs) 
 {
     // Allocate shared mem for stencil and input_tile
-    // __shared__ scalar_t s_crow[Ltau * Lx * Lx + 1];
-    __shared__ scalar_t s_col[KERNEL_SIZE][NUM_ENTRY_PER_ROW];
+    // __shared__ int64_t s_crow[Ltau * Lx * Lx + 1];
+    __shared__ int64_t s_col[KERNEL_SIZE][NUM_ENTRY_PER_ROW];
     __shared__ scalar_t s_val[KERNEL_SIZE][NUM_ENTRY_PER_ROW];
     __shared__ scalar_t s_input_tile[TILE_SIZE];
 
@@ -64,8 +64,8 @@ __global__ void precon_vec_kernel(
         // int tau_shift = i - Num_ENTRY_PER_ROW / 2;  // [-6, ..., 0, ..., 6]
         // s_col[PAD + tx, i] = precon_col[precon_crow[idx_tau * stride_vs + idx_site] + (idx_tau + tau_shift)%Ltau * stride_vs + idx_site]  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat, 
         // `(idx_tau + tau_shift)%Ltau * stride_vs` would be used if a row were not compressed.
-        s_col[PAD + tx, i] = precon_col[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-        s_val[PAD + tx, i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+        s_col[PAD + tx][i] = precon_col[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+        s_val[PAD + tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
     }
 
     if (tx < PAD) { // Left halo
@@ -73,8 +73,8 @@ __global__ void precon_vec_kernel(
         int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
         int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
-            s_col[tx, i] = precon_col[row_start_pad + i]; 
-            s_val[tx, i] = precon_val[row_start_pad + i];  
+            s_col[tx][i] = precon_col[row_start_pad + i]; 
+            s_val[tx][i] = precon_val[row_start_pad + i];  
         }
     }
     if (tx >= blockDim.x - PAD) { // Right halo
@@ -82,8 +82,8 @@ __global__ void precon_vec_kernel(
         int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
         int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
-            s_col[tx + 2*PAD, i] = precon_col[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-            s_val[tx + 2*PAD, i] = precon_val[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+            s_col[tx + 2*PAD][i] = precon_col[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+            s_val[tx + 2*PAD][i] = precon_val[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
         }
     }
     __syncthreads();
@@ -135,11 +135,11 @@ void precon_vec(
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, dyn_shared_mem, stream>>>(
-        d_r.data_ptr<scalar_t>(), 
+        reinterpret_cast<scalar_t*>(d_r.data_ptr()), 
         precon_crow.data_ptr<int64_t>(), 
         precon_col.data_ptr<int64_t>(), 
-        precon_val.data_ptr<scalar_t>(), 
-        out.data_ptr<scalar_t>(), 
+        reinterpret_cast<scalar_t*>(precon_val.data_ptr()), 
+        reinterpret_cast<scalar_t*>(out.data_ptr()), 
         Lx, Ltau, bs);
 
     cudaError_t err = cudaStreamSynchronize(stream);

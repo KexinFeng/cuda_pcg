@@ -1,6 +1,6 @@
 import sys
 
-sys.path.insert(0, '/users/4/fengx463/mount_folder/awsome_project')
+sys.path.insert(0, '/users/4/fengx463/mount_folder/cuda_pcg')
 sys.path.insert(0, '/users/4/fengx463/hmc/qed_fermion/qed_fermion')
 
 import torch

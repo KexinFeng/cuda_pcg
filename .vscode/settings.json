@@ -4,6 +4,8 @@
         "/users/4/fengx463/hmc/qed_fermion/qed_fermion"
     ],
     "files.associations": {
-        "cstdint": "cpp"
+        "cstdint": "cpp",
+        "__locale": "cpp",
+        "ios": "cpp"
     }
 }
