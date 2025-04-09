@@ -58,5 +58,18 @@ result = core.pcg(i_lists,
 )
 print("Result of PCG:", result[:10], result.shape)
 
+# Expected output
+expected = torch.tensor([
+        [-1.0282+0.7633j],
+        [-0.5651+0.3180j],
+        [-2.0545+0.4874j],
+        [ 0.8165-0.3189j],
+        [-0.8099+1.4335j],
+        [-0.6698+1.1058j],
+        [-1.2660-0.3112j],
+        [ 1.2133-0.8051j],
+        [-1.0215+1.4854j],
+        [-0.6699+1.5203j]], device='cuda', dtype=torch.complex64)
 
+torch.testing.assert_close(result[:10], expected, rtol=1e-4, atol=1e-6)
 
