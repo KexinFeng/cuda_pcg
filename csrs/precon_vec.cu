@@ -40,10 +40,12 @@ __global__ void precon_vec_kernel(
 
     int tx = threadIdx.x; 
     int idx_tau = blockIdx.x * blockDim.x + tx;  // global temporal idx: [blockIdx.x, threadIdx.x]
-    int idx_site = blockIdx.y;
+    if (idx_tau >= Ltau) return;
 
+    int idx_site = blockIdx.y;
     int stride_vs = Lx * Lx;
-    
+    if (idx_site >= stride_vs) return;
+
     // Load the input into shared memory
     s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
 
@@ -97,10 +99,9 @@ __global__ void precon_vec_kernel(
 }
 } // namespace cuda_pcg
 
-void precon_vec(
+torch::Tensor precon_vec(
     const torch::Tensor& d_r,        // [bs, Ltau * Vs] complex64
     const torch::Tensor& precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
-    torch::Tensor& out,
     int Lx) 
 {
     TORCH_CHECK(d_r.is_cuda(), "Input must be a CUDA tensor");
@@ -111,6 +112,8 @@ void precon_vec(
     auto precon_crow = precon.crow_indices();
     auto precon_col = precon.col_indices();
     auto precon_val = precon.values();
+
+    auto out = torch::empty_like(d_r);
     
     auto bs = d_r.size(0);
     auto Vs = Lx * Lx;  // typically 10x10 = 100, up to 24x24 = 576
@@ -120,33 +123,49 @@ void precon_vec(
     auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
     dim3 grid = {num_blocks, Vs};
 
-    using scalar_t = cuComplex;
+    // Verify that grid/block sizes are within device limits using:
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    printf("Max threads per block: %d\n", prop.maxThreadsPerBlock);
+    // Check device pointer befor launch
+    printf("d_r: %p, precon_val: %p\n", d_r.data_ptr(), precon_val.data_ptr());
+
+    using scalar_t = c10::complex<float>;
     if (d_r.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = cuComplex; 
+        using scalar_t = c10::complex<float>; 
     } else if (d_r.dtype() == at::ScalarType::ComplexDouble) {
-        using scalar_t = cuDoubleComplex;
+        using scalar_t = c10::complex<double>;
     } else {
         throw std::invalid_argument("Unsupported data type");
     }
 
-    int dyn_shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
+    int shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
                         + sizeof(scalar_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_val
                         + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
                         * block.x;           
 
+    printf("Shared memory requirement per block: %d bytes\n", shared_mem);
+
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, dyn_shared_mem, stream>>>(
-        reinterpret_cast<scalar_t*>(d_r.data_ptr()), 
+    cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, 0, stream>>>(
+        d_r.data_ptr<scalar_t>(), 
         precon_crow.data_ptr<int64_t>(), 
         precon_col.data_ptr<int64_t>(), 
-        reinterpret_cast<scalar_t*>(precon_val.data_ptr()), 
-        reinterpret_cast<scalar_t*>(out.data_ptr()), 
+        precon_val.data_ptr<scalar_t>(), 
+        out.data_ptr<scalar_t>(), 
         Lx, Ltau, bs);
+
+    cudaError_t kernel_err = cudaGetLastError();
+    if (kernel_err != cudaSuccess) {
+        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+        throw std::runtime_error("CUDA kernel launch failed");
+    }
 
     cudaError_t err = cudaStreamSynchronize(stream);
     if (err != cudaSuccess) {
         std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
         throw std::runtime_error("CUDA kernel execution failed");
-        return; 
     }
+
+    return out;
 }

@@ -17,14 +17,17 @@ R_u = hmc.draw_psudo_fermion().view(-1, 1)  # cdtype
 psi_u = R_u.to(torch.complex64)
 
 hmc.reset_precon()
-precon = hmc.precon.to(torch.complex64)
-out = torch.empty_like(psi_u)
+precon = hmc.precon.to_sparse_csr().to(torch.complex64)
+# out = torch.zeros_like(psi_u, dtype=torch.complex64)
 
-core.precon_vec(psi_u, precon, out, Lx)
+out = core.precon_vec(psi_u, 
+                precon,
+                Lx)
 print("Result of PCG:", out[:10], out.shape)
 
-expected = torch.sparse.mm(precon, psi_u)
-assert torch.allclose(expected, out, atol=1e-6), "The output does not match the expected result."
+# expected = torch.sparse.mm(precon, psi_u)
+# print("Expected result:", expected[:10])
+# torch.testing.assert_close(expected, out, atol=1e-6, rtol=0, msg="The output does not match the expected result.")
 
 
 

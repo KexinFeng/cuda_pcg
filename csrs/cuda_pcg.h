@@ -12,8 +12,7 @@ torch::Tensor pcg(
     torch::Tensor precon,
     int Lx, int Ltau, int max_iter, double rtol); // precon is a torch.sparse.csr tensor
 
-void precon_vec(
+torch::Tensor precon_vec(
     const torch::Tensor& d_r,        // [bs, Ltau * Vs] complex64
     const torch::Tensor& precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
-    torch::Tensor& out,
-    int Lx);
+    int Lx); // Returns a tensor after applying preconditioning
