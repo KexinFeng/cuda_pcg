@@ -124,7 +124,7 @@ torch::Tensor pcg(
 
     const int64_t* d_crow_indices = precon_crow_indices.data_ptr<int64_t>();
     const int64_t* d_col_indices = precon_col_indices.data_ptr<int64_t>();
-    const cuComplex* d_values = reinterpret_cast<const cuComplex*>(precon_values.data_ptr<c10::complex<float>>());
+    const cuComplex* d_values = reinterpret_cast<const cuComplex*>(precon_values.data_ptr());
 
     cusparseSpMatDescr_t matA;
     CHECK_CUSPARSE(cusparseCreateCsr(
@@ -134,18 +134,18 @@ torch::Tensor pcg(
         const_cast<int64_t*>(d_col_indices),
         const_cast<cuComplex*>(d_values),
         CUSPARSE_INDEX_64I, CUSPARSE_INDEX_64I,
-        CUSPARSE_INDEX_BASE_ZERO, CUDA_C_64F));
+        CUSPARSE_INDEX_BASE_ZERO, CUDA_C_32F));
 
     // --- Convert `psi_u` to cuSPARSE dense vector format ---
-    const cuComplex* d_p = reinterpret_cast<const cuComplex*>(psi_u.data_ptr<c10::complex<float>>());
+    const cuComplex* d_p = reinterpret_cast<const cuComplex*>(psi_u.data_ptr());
 
     cusparseDnVecDescr_t vecP, vecAp;
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuComplex*>(d_p), CUDA_C_64F));
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecP, psi_u.numel(), const_cast<cuComplex*>(d_p), CUDA_C_32F));
 
     // Allocate memory for Ap (output of SpMV)
     auto Ap = torch::zeros_like(psi_u);
-    cuComplex* d_Ap = reinterpret_cast<cuComplex*>(Ap.data_ptr<c10::complex<float>>());
-    CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, psi_u.numel(), d_Ap, CUDA_C_64F));
+    cuComplex* d_Ap = reinterpret_cast<cuComplex*>(Ap.data_ptr());
+    CHECK_CUSPARSE(cusparseCreateDnVec(&vecAp, psi_u.numel(), d_Ap, CUDA_C_32F));
 
     // --- Allocate an external buffer for cusparseSpMV ---
     size_t bufferSize = 0;
@@ -155,14 +155,14 @@ torch::Tensor pcg(
     CHECK_CUSPARSE(cusparseSpMV_bufferSize(cusparseHandle,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
-        CUDA_C_64F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+        CUDA_C_32F, CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
     CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
 
     // --- Perform the SpMV operation ---
     CHECK_CUSPARSE(cusparseSpMV(cusparseHandle,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &spmvAlpha, matA, vecP, &spmvBeta, vecAp,
-        CUDA_C_64F, CUSPARSE_SPMV_ALG_DEFAULT, dBuffer));
+        CUDA_C_32F, CUSPARSE_SPMV_ALG_DEFAULT, dBuffer));
 
     // Return the result of SpMV (Ap)
     return Ap;
