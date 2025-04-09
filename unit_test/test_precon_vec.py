@@ -14,13 +14,13 @@ hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
 
 R_u = hmc.draw_psudo_fermion().view(-1, 1)  # cdtype
-psi_u = R_u
+psi_u = R_u.to(torch.complex64)
 
 hmc.reset_precon()
-precon = hmc.precon
+precon = hmc.precon.to(torch.complex64)
 out = torch.empty_like(psi_u)
 
-core.cuda_precon_vec(psi_u, precon, out, Lx)
+core.precon_vec(psi_u, precon, out, Lx)
 print("Result of PCG:", out[:10], out.shape)
 
 expected = torch.sparse.mm(precon, psi_u)

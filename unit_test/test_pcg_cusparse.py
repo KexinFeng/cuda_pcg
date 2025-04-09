@@ -21,7 +21,7 @@ print("Result (A + B):", result)
 Lx, Ly, Ltau = 2, 2, 40
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 
-boson = hmc.boson  # dtype
+boson = hmc.boson.to(torch.float32)  # dtype
 # hmc.i_list_1  # dtype
 # hmc.i_list_2
 # hmc.i_list_3
@@ -32,10 +32,10 @@ R_u = hmc.draw_psudo_fermion().view(-1, 1)  # cdtype
 # MhM0, B_list, M0 = result[0], result[1], result[-1]
 # psi_u = torch.sparse.mm(M0.permute(1, 0).conj(), R_u)
 
-psi_u = R_u
+psi_u = R_u.to(torch.complex64)
 
 hmc.reset_precon()
-precon = hmc.precon
+precon = hmc.precon.to(torch.complex64)
 # precon_ind = precon.indices()
 # precon_val = precon.values()
 # precon_sz = precon.size()

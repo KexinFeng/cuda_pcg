@@ -105,6 +105,7 @@ void precon_vec(
 {
     TORCH_CHECK(d_r.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(precon.is_cuda(), "Kernel must be a CUDA tensor");
+    TORCH_CHECK(d_r.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
 
     // auto out = torch::empty_like(d_r);
     auto precon_crow = precon.crow_indices();
@@ -119,9 +120,9 @@ void precon_vec(
     auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
     dim3 grid = {num_blocks, Vs};
 
-    using scalar_t = cuFloatComplex;  // Default declaration
+    using scalar_t = cuComplex;
     if (d_r.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = cuFloatComplex; 
+        using scalar_t = cuComplex; 
     } else if (d_r.dtype() == at::ScalarType::ComplexDouble) {
         using scalar_t = cuDoubleComplex;
     } else {
