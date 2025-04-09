@@ -104,13 +104,59 @@ torch::Tensor precon_vec(
     TORCH_CHECK(d_r.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(precon.is_cuda(), "Kernel must be a CUDA tensor");
 
+    auto out = torch::empty_like(d_r);
+
     auto bs = d_r.size(0);
     auto Vs = Lx * Lx;  // typically 10x10 = 100, up to 24x24 = 576
     auto Ltau = precon.size(0) / Vs;  // typically 400, up to 24x40 = 960
     
     dim3 block = {BLOCK_WIDTH};  
+    int num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
     // Space dims are independent, thus laied across grid.
-    dim3 grid = {Vs};
+    dim3 grid = {num_blocks, Vs};
 
+    int dyn_shared_mem = (sizeof(int64_t) * NUM_ENTRY_PER_ROW * KERNEL_SIZE + sizeof(scalar_t) * NUM_ENTRY_PER_ROW * KERNEL_SIZE) * block.x;  // shared memory size
+
+
+    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    precon_vec_kernel<<<grid, block, dyn_shared_mem, stream>>>(
+        d_r.data_ptr<scalar_t>(), 
+        precon_crow.data_ptr<int64_t>(), 
+        precon_col.data_ptr<int64_t>(), 
+        precon_val.data_ptr<scalar_t>(), 
+        out.data_ptr<scalar_t>(), 
+        Lx, Ltau, bs);
+        
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+        throw std::runtime_error("CUDA kernel launch failed");
+    }
+    // Synchronize the stream
+    cudaStreamSynchronize(stream);   
+    // Check for errors after synchronization
+    err = cudaGetLastError();   
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error after synchronization: " << cudaGetErrorString(err) << std::endl;
+        throw std::runtime_error("CUDA kernel execution failed");
+    }
+
+
+    // Steam creation
+    cudaStream_t streams[NUM_STREAMS];
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        cudaStreamCreate(&streams[i]);
+    }
+
+    for (int i = 0; i < num_blocks; ++i) {
+        int stream_id = i % NUM_STREAMS;
+        precon_vec_kernel<<<grid, block, dyn_shared_mem, streams[stream_id]>>>(
+            d_r.data_ptr<scalar_t>(), 
+            precon_crow.data_ptr<int64_t>(), 
+            precon_col.data_ptr<int64_t>(), 
+            precon_val.data_ptr<scalar_t>(), 
+            out.data_ptr<scalar_t>(), 
+            Lx, Ltau, bs);
 
 }
