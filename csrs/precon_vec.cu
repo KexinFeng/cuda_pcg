@@ -88,7 +88,7 @@ __global__ void precon_vec_kernel(
     __syncthreads();
 
     // Compute the output
-    
+    // ... 
 
     if (tx == 0 && blockIdx.x == 0) {
         printf("Debug: Code reached here. BlockIdx.x: %d, ThreadIdx.x: %d\n", blockIdx.x, tx);
@@ -112,51 +112,29 @@ torch::Tensor precon_vec(
     
     dim3 block = {BLOCK_WIDTH};  
     int num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
-    // Space dims are independent, thus laied across grid.
     dim3 grid = {num_blocks, Vs};
 
-    int dyn_shared_mem = (sizeof(int64_t) * NUM_ENTRY_PER_ROW * KERNEL_SIZE + sizeof(scalar_t) * NUM_ENTRY_PER_ROW * KERNEL_SIZE) * block.x;  // shared memory size
-
+    // using scalar_t = c10::complex<float>;  
+    using scalar_t = d_r.scalar_type(); 
+    int dyn_shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
+                        + sizeof(scalar_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_val
+                        + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
+                        * block.x;           
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    precon_vec_kernel<<<grid, block, dyn_shared_mem, stream>>>(
+    cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, dyn_shared_mem, stream>>>(
         d_r.data_ptr<scalar_t>(), 
         precon_crow.data_ptr<int64_t>(), 
         precon_col.data_ptr<int64_t>(), 
         precon_val.data_ptr<scalar_t>(), 
         out.data_ptr<scalar_t>(), 
         Lx, Ltau, bs);
-        
-    // Check for errors
-    cudaError_t err = cudaGetLastError();
+
+    cudaError_t err = cudaStreamSynchronize(stream);
     if (err != cudaSuccess) {
-        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
-        throw std::runtime_error("CUDA kernel launch failed");
-    }
-    // Synchronize the stream
-    cudaStreamSynchronize(stream);   
-    // Check for errors after synchronization
-    err = cudaGetLastError();   
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error after synchronization: " << cudaGetErrorString(err) << std::endl;
+        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
         throw std::runtime_error("CUDA kernel execution failed");
+        return; 
     }
-
-
-    // Steam creation
-    cudaStream_t streams[NUM_STREAMS];
-    for (int i = 0; i < NUM_STREAMS; ++i) {
-        cudaStreamCreate(&streams[i]);
-    }
-
-    for (int i = 0; i < num_blocks; ++i) {
-        int stream_id = i % NUM_STREAMS;
-        precon_vec_kernel<<<grid, block, dyn_shared_mem, streams[stream_id]>>>(
-            d_r.data_ptr<scalar_t>(), 
-            precon_crow.data_ptr<int64_t>(), 
-            precon_col.data_ptr<int64_t>(), 
-            precon_val.data_ptr<scalar_t>(), 
-            out.data_ptr<scalar_t>(), 
-            Lx, Ltau, bs);
 
 }
