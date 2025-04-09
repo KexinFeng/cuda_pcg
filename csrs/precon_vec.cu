@@ -41,27 +41,29 @@ __global__ void precon_vec_kernel(
 
     int tx = threadIdx.x; 
     int idx_tau = blockIdx.x * blockDim.x + tx;  // global temporal idx: [blockIdx.x, threadIdx.x]
+    int idx_site = blockIdx.y;
+
     int stride_vs = Lx * Lx;
     
     // Load the input into shared memory
-    s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs]; 
+    s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
 
     if (tx < PAD) { // Left halo
         int idx_tau_pad = (idx_tau - PAD) % Ltau;  // left shift each idx_tau by PAD
-        s_input_tile[tx] = d_r[idx_tau_pad * stride_vs]; 
+        s_input_tile[tx] = d_r[idx_tau_pad * stride_vs + idx_site]; 
     }
     if (tx >= blockDim.x - PAD) { // Right halo; backward count by PAD
         int idx_tau_pad = (idx_tau + PAD) % Ltau;  // right shift each idx_tau by PAD
         s_input_tile[tx + 2*PAD] = /* starting at blockDim.x + PAD when tx = blockDim.x - PAD */
-        d_r[idx_tau_pad * stride_vs];
+        d_r[idx_tau_pad * stride_vs + idx_site];
     }
 
     // Load stencil into shared memory
-    int row_start = precon_crow[idx_tau * stride_vs];
-    int row_size = precon_crow[idx_tau * stride_vs + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
+    int row_start = precon_crow[idx_tau * stride_vs + idx_site];
+    int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
     for (int i = 0; i < row_size; ++i) {
         // int tau_shift = i - Num_ENTRY_PER_ROW / 2;  // [-6, ..., 0, ..., 6]
-        // s_col[PAD + tx, i] = precon_col[precon_crow[idx_tau * stride_vs] + (idx_tau + tau_shift)%Ltau * stride_vs]  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat, 
+        // s_col[PAD + tx, i] = precon_col[precon_crow[idx_tau * stride_vs + idx_site] + (idx_tau + tau_shift)%Ltau * stride_vs + idx_site]  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat, 
         // `(idx_tau + tau_shift)%Ltau * stride_vs` would be used if a row were not compressed.
         s_col[PAD + tx, i] = precon_col[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
         s_val[PAD + tx, i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
@@ -69,8 +71,8 @@ __global__ void precon_vec_kernel(
 
     if (tx < PAD) { // Left halo
         int idx_tau_pad = (idx_tau - PAD) % Ltau;
-        int row_start_pad = precon_crow[idx_tau_pad * stride_vs];
-        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + 1] - row_start_pad; 
+        int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
+        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
             s_col[tx, i] = precon_col[row_start_pad + i]; 
             s_val[tx, i] = precon_val[row_start_pad + i];  
@@ -78,8 +80,8 @@ __global__ void precon_vec_kernel(
     }
     if (tx >= blockDim.x - PAD) { // Right halo
         int idx_tau_pad = (idx_tau + PAD) % Ltau;
-        int row_start_pad = precon_crow[idx_tau_pad * stride_vs];
-        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + 1] - int row_start_pad; 
+        int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
+        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - int row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
             s_col[tx + 2*PAD, i] = precon_col[int row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
             s_val[tx + 2*PAD, i] = precon_val[int row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
