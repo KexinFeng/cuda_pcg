@@ -1,6 +1,7 @@
 from torch.utils.cpp_extension import load
 import os
 import torch
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
 CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12.0")
 
@@ -22,8 +23,8 @@ _C = load(
     name="qed_fermion_module",  # Python module name
     sources=[
         # "csrs/cuda_pcg_cusparse.cu",  # optional if you use it
-        "csrs/precon_vec.cu",
-        "csrs/pybind.cpp",
+        base_dir + "/csrs/precon_vec.cu",
+        base_dir + "/csrs/pybind.cpp",
     ],
     extra_include_paths=[
         os.path.join(CUDA_HOME, "include"),
