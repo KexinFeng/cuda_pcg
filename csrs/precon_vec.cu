@@ -11,8 +11,8 @@
 // halo region size is 6, equal to PAD;
 // BLOCK_WIDTH is the number of output pixels per block. 
 // TILE_SIZE = BLOCK_WIDTH + 2*PAD
-// KENEL_SIZE is equal to BLOCK_WIDTH + 2*PAD in this case
-// across the batch, kernel is shared.
+// STENCIL_SIZE is equal to BLOCK_WIDTH in this case
+// across the batch, stencil is shared.
 #define BLOCK_WIDTH 32
 #define PAD 6
 #define TILE_SIZE (BLOCK_WIDTH + 2 * PAD)
@@ -73,9 +73,40 @@ __global__ void precon_vec_kernel(
 
     // Compute the output
     scalar_t sum = make_cuFloatComplex(0.0f, 0.0f);
-    for (int i = 0; i < row_size && i < NUM_ENTRY_PER_ROW; ++i) {
-        int shift = i - row_size / 2;  // [-PAD, ..., PAD]
-        sum = cuCaddf(sum, cuCmulf(s_val[tx][i], s_input_tile[PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH + 2*PAD - 1]
+    int half_row_size = row_size / 2;
+    int left_roll = idx_tau - half_row_size; 
+    int right_roll = idx_tau + half_row_size;
+    for (int i = 0; i < row_size && i < NUM_ENTRY_PER_ROW; ++i) {       
+        int j = i;
+        // These if-controls are structural and entry-value-independent, thus can be captured by cuda_graph.
+        if (left_roll < 0) 
+            // First row of precon may be wrapped around
+            // Columns: [0, 16, 32, 48, 112, 128, 144], row_size = 7, 4x4x10
+            j = mod(i + left_roll, row_size); 
+        if (right_roll >= Ltau) 
+            // Last row: [15, 63, 79, 95, 111, 127, 143, 159], row_size = 7, 4x4x10
+            j = mod(i + (right_roll - Ltau + 1), row_size);
+
+        int shift = i - half_row_size;  // [-PAD (or half_row_size), ..., PAD (or half_row_size)]
+        sum = cuCaddf(sum, cuCmulf(s_val[tx][j], s_input_tile[PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH + 2*PAD - 1]
+        
+        if (blockIdx.y == 0 && tx == 0 && blockIdx.x == 0) {
+            printf("idx_tau: %d, idx_site: %d, s_val[%d][%d]: %f + %fi, s_input_tile[%d]: %f + %fi\nshift: %d\n", 
+                idx_tau, idx_site, tx, i, 
+                cuCrealf(s_val[tx][j]), cuCimagf(s_val[tx][j]), 
+                PAD + tx + shift,
+                cuCrealf(s_input_tile[PAD + tx + shift]), cuCimagf(s_input_tile[PAD + tx + shift]), 
+                shift);
+        }
+
+        if (blockIdx.y == 1 && tx == blockDim.x - 1 && blockIdx.x == 0) {
+            printf("idx_tau: %d, idx_site: %d, s_val[%d][%d]: %f + %fi, s_input_tile[%d]: %f + %fi\nshift: %d\n", 
+                idx_tau, idx_site, tx, i, 
+                cuCrealf(s_val[tx][j]), cuCimagf(s_val[tx][j]), 
+                PAD + tx + shift,
+                cuCrealf(s_input_tile[PAD + tx + shift]), cuCimagf(s_input_tile[PAD + tx + shift]), 
+                shift);
+        }
     }
     out[idx_tau * stride_vs + idx_site] = sum;
 }
