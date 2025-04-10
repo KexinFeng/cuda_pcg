@@ -5,7 +5,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/util/complex.h>
 #include "cuda_pcg.h"
-
+#include "utils.h"
 
 // (Ltau / BLOCK_WIDTH) blocks; 
 // halo region size is 6, equal to PAD;
@@ -39,8 +39,13 @@ __global__ void precon_vec_kernel(
     __shared__ scalar_t s_input_tile[TILE_SIZE];
 
     int tx = threadIdx.x; 
-    int idx_tau = blockIdx.y * blockDim.y + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
+    int idx_tau = blockIdx.y * blockDim.x + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
+    // BlockIdx.y ranges (num_blocks);
+    // BlockDim.x == BLOCK_WIDTH, i.e. block_size_x
     if (idx_tau >= Ltau) return;
+    if (tx == 0 && blockIdx.y == 0) {
+        printf("BlockIdx.y: %d, BlockDim.x: %d\n", blockIdx.y, blockDim.x);
+    }
 
     int idx_site = blockIdx.x;
     int stride_vs = Lx * Lx;
@@ -50,11 +55,11 @@ __global__ void precon_vec_kernel(
     s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
 
     if (tx < PAD) { // Left halo
-        int idx_tau_pad = (idx_tau - PAD) % Ltau;  // left shift each idx_tau by PAD
+        int idx_tau_pad = mod(idx_tau - PAD, Ltau);  // left shift each idx_tau by PAD
         s_input_tile[tx] = d_r[idx_tau_pad * stride_vs + idx_site]; 
     }
     if (tx >= blockDim.x - PAD) { // Right halo; backward count by PAD
-        int idx_tau_pad = (idx_tau + PAD) % Ltau;  // right shift each idx_tau by PAD
+        int idx_tau_pad = mod(idx_tau + PAD, Ltau);  // right shift each idx_tau by PAD
         s_input_tile[tx + 2*PAD] = /* starting at blockDim.x + PAD when tx = blockDim.x - PAD */
         d_r[idx_tau_pad * stride_vs + idx_site];
     }
@@ -68,7 +73,7 @@ __global__ void precon_vec_kernel(
     }
 
     if (tx < PAD) { // Left halo
-        int idx_tau_pad = (idx_tau - PAD) % Ltau;
+        int idx_tau_pad = mod(idx_tau - PAD, Ltau);
         int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
         int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
@@ -77,7 +82,7 @@ __global__ void precon_vec_kernel(
         }
     }
     if (tx >= blockDim.x - PAD) { // Right halo
-        int idx_tau_pad = (idx_tau + PAD) % Ltau;
+        int idx_tau_pad = mod(idx_tau + PAD, Ltau);
         int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
         int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
         for (int i = 0; i < row_size_pad; ++i) {
@@ -87,17 +92,23 @@ __global__ void precon_vec_kernel(
     }
     __syncthreads();
 
-    if (tx == 0 && blockIdx.y == 0) {
-        printf("Debug: Code reached here. BlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
+    if (tx == 0 && blockIdx.y == 0 && blockIdx.x == 0) {
+        printf("Debug: Code reached here. \nBlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
         printf("BlockIdx.x: %d\n", blockIdx.x);
         printf("s_col[0]: ");
-        for (int i = 0; i < NUM_ENTRY_PER_ROW; ++i) {
-            printf("%lld ", s_col[0][i]);
+        
+        row_start = precon_crow[0 * stride_vs + idx_site];
+        row_size = precon_crow[0 * stride_vs + idx_site + 1] - row_start;
+        printf("row_size: %d\n", row_size);
+
+        for (int i = 0; i < NUM_ENTRY_PER_ROW && i < row_size; ++i) {
+            printf("%lld ", s_col[PAD][i]);
         }
         printf("\ns_val[0]: ");
-        for (int i = 0; i < NUM_ENTRY_PER_ROW; ++i) {
-            printf("(%f, %f) ", cuCrealf(s_val[0][i]), cuCimagf(s_val[0][i]));
+        for (int i = 0; i < NUM_ENTRY_PER_ROW && i < row_size; ++i) {
+            printf("(%f, %f) ", cuCrealf(s_val[PAD][i]), cuCimagf(s_val[PAD][i]));
         }
+
         printf("\ns_input_tile: ");
         for (int i = 0; i < TILE_SIZE; ++i) {
             printf("(%f, %f) ", cuCrealf(s_input_tile[i]), cuCimagf(s_input_tile[i]));

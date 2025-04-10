@@ -4,9 +4,9 @@ sys.path.insert(0, '/users/4/fengx463/mount_folder/cuda_pcg')
 sys.path.insert(0, '/users/4/fengx463/hmc/qed_fermion/qed_fermion')
 
 import torch
-# import qed_fermion_module._C as core
+from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
-from qed_extension_loader import _C
+# from qed_extension_loader import _C
 
 # HMC inputs
 Lx, Ly, Ltau = 2, 2, 40
@@ -35,14 +35,20 @@ for r in range(Vs):
     print('site:', r)
     row_start = crow[r]
     row_end = crow[r + 1]
+    print('row_size:', row_end - row_start)
     for i in range(row_start, row_end):
         print("Row:", r, "Col:", col[i].item(), "Val:", val.to_dense()[i].item())
 
 stride_vs = Vs
+block_width = 32
+pad = 6
+tau_idx = torch.arange(- pad, block_width + pad, device = boson.device) % Ltau
 for i in range(Vs):
+    if i != 0:
+        continue
     print('site:', r)
     offset = torch.arange(-6, 7, device = boson.device)
-    vec = psi_u[(0 + offset) % Ltau * stride_vs + i]
+    vec = psi_u[tau_idx * stride_vs + i]
     print(f'psi_vec = {vec}')
 
 
