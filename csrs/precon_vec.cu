@@ -41,7 +41,6 @@ __global__ void precon_vec_kernel(
     int idx_tau = blockIdx.y * blockDim.x + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
     // BlockIdx.y ranges (num_blocks);
     // BlockDim.x == BLOCK_WIDTH, i.e. block_size_x
-    if (idx_tau >= Ltau) return;
 
     int idx_site = blockIdx.x;
     int stride_vs = Lx * Lx;
@@ -50,17 +49,32 @@ __global__ void precon_vec_kernel(
     int Vs = Lx * Lx; 
 
     // Load the input into shared memory
-    s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
-
+    int max_tx_num = std::min(Ltau - blockIdx.y * blockDim.x, blockDim.x);
+    if (tx < max_tx_num) {
+        s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
+    }
+  
     if (tx < PAD) { // Left halo
+        // Possible that max_tx_num < PAD, but it's ok
         int idx_tau_pad = mod(idx_tau - PAD, Ltau);  // left shift each idx_tau by PAD
         s_input_tile[tx] = d_r[idx_tau_pad * stride_vs + idx_site]; 
     }
-    if (tx >= blockDim.x - PAD) { // Right halo; backward count by PAD
-        int idx_tau_pad = mod(idx_tau + PAD, Ltau);  // right shift each idx_tau by PAD
-        s_input_tile[tx + 2*PAD] = /* starting at blockDim.x + PAD when tx = blockDim.x - PAD */
-        d_r[idx_tau_pad * stride_vs + idx_site];
+    
+    // if (tx >= blockDim.x - PAD) { // Right halo; backward count by PAD
+    //     int idx_tau_pad = mod(idx_tau + PAD, Ltau);  // right shift each idx_tau by PAD
+    //     s_input_tile[tx + 2*PAD] = /* starting at blockDim.x + PAD when tx = blockDim.x - PAD */
+    //     d_r[idx_tau_pad * stride_vs + idx_site];
+    // }
+    if (tx >= blockDim.x - PAD) { // Right halo
+        // Delta = tx - (blockDim.x - PAD)
+        // idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + Delta, Ltau)
+        // d_r[idx_tau_pad * stride_vs + idx_site]
+        // s_input_tile[PAD + max_tx_num + Delta]
+        int idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + (tx - (blockDim.x - PAD)), Ltau); 
+        s_input_tile[PAD + max_tx_num + (tx - (blockDim.x - PAD))] = d_r[idx_tau_pad * stride_vs + idx_site];
     }
+
+    if (idx_tau >= Ltau) return;
 
     // Load stencil into shared memory
     int row_start = precon_crow[idx_tau * stride_vs + idx_site];
@@ -71,6 +85,18 @@ __global__ void precon_vec_kernel(
     }
 
     __syncthreads();
+
+    if (blockIdx.y == gridDim.y - 1 && tx == 10 - 1 && blockIdx.x == 0){
+        printf("==>Debug: Code reached here. \nBlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
+        printf("BlockIdx.x: %d\n", blockIdx.x);
+        printf("s_col[0]: ");
+        
+        printf("\ns_input_tile: ");
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            printf("(%f, %f)\n", cuCrealf(s_input_tile[i]), cuCimagf(s_input_tile[i]));
+        }
+        printf("\n");
+    }
 
     // Compute the output
     scalar_t sum = make_cuFloatComplex(0.0f, 0.0f);

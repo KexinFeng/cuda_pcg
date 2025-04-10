@@ -25,7 +25,7 @@ out = _C.precon_vec(psi_u,
                 precon,
                 Lx)
 print('----------python------------')
-# print("Result of PCG:", out[-10:], out.shape)
+print("Result of PCG:", out[-10:], out.shape)
 
 # print out precon and vec info
 crow = precon.crow_indices().to(torch.int32)
@@ -62,8 +62,12 @@ for i, (col_idx, value) in enumerate(zip(last_row_cols, last_row_vals)):
     print(f"psi_u[{col_idx.item()}]: {psi_u[col_idx.item()].item()}")
 
 expected = torch.sparse.mm(precon, psi_u).to_dense()
-# print("Expected result:", expected[-10:], expected.shape)
-# torch.testing.assert_close(expected, out, atol=1e-6, rtol=0)
+print("Expected result:", expected[-10:], expected.shape)
+torch.testing.assert_close(expected, out, atol=1e-6, rtol=0)
+
+
+vec = psi_u.view(Ltau, -1)
+print("vec[:, 0]:", vec[:, 0].cpu().tolist())
 
 
 
