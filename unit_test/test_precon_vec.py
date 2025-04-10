@@ -4,19 +4,9 @@ sys.path.insert(0, '/users/4/fengx463/mount_folder/cuda_pcg')
 sys.path.insert(0, '/users/4/fengx463/hmc/qed_fermion/qed_fermion')
 
 import torch
-import qed_fermion_module._C as core
+# import qed_fermion_module._C as core
 from hmc_sampler_batch import HmcSampler
-
-from torch.utils.cpp_extension import load
-import torch
-# Load the CUDA extension
-_C = load(
-    name="_C",
-    sources=["csrs/pybind.cpp", 
-            "csrs/cuda_pcg.cu",
-             "csrs/precon_vec.cu"],
-    verbose=True
-)
+from qed_extension_loader import _C
 
 # HMC inputs
 Lx, Ly, Ltau = 4, 4, 40

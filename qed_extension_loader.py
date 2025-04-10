@@ -1,5 +1,4 @@
-from setuptools import setup
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+from torch.utils.cpp_extension import load
 import os
 import torch
 
@@ -14,34 +13,26 @@ USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
 CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 
-# Use NVCC threads to parallelize the build.
+# Threads
 nvcc_threads = int(os.getenv("NVCC_THREADS", 8))
 num_threads = min(os.cpu_count(), nvcc_threads)
 NVCC_FLAGS += ["--threads", str(num_threads)]
 
-extension = CUDAExtension(
-    name="qed_fermion_module._C",  # the Python import name
+_C = load(
+    name="qed_fermion_module",  # Python module name
     sources=[
-        # "csrs/cuda_pcg_cusparse.cu",
+        # "csrs/cuda_pcg_cusparse.cu",  # optional if you use it
         "csrs/precon_vec.cu",
         "csrs/pybind.cpp",
     ],
-    include_dirs=[
+    extra_include_paths=[
         os.path.join(CUDA_HOME, "include"),
     ],
-    library_dirs=[
-        os.path.join(CUDA_HOME, "lib64"),
+    extra_ldflags=[
+        f"-L{os.path.join(CUDA_HOME, 'lib64')}",
+        # "-lcudart", "-lcusparse", "-lcublas",
     ],
-    libraries=["cudart", "cusparse", "cublas"],
-    extra_compile_args={
-        "cxx": CXX_FLAGS,
-        "nvcc": NVCC_FLAGS,
-    },
-)
-
-setup(
-    name="Awsome_Project",
-    version="0.1",
-    ext_modules=[extension],
-    cmdclass={"build_ext": BuildExtension},
+    extra_cflags=CXX_FLAGS,
+    extra_cuda_cflags=NVCC_FLAGS,
+    verbose=True,
 )
