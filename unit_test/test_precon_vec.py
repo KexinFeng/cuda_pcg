@@ -19,7 +19,6 @@ psi_u = R_u.to(torch.complex64)
 
 hmc.reset_precon()
 precon = hmc.precon.to_sparse_csr().to(torch.complex64)
-# out = torch.zeros_like(psi_u, dtype=torch.complex64)
 
 out = _C.precon_vec(psi_u, 
                 precon,

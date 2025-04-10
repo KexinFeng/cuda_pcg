@@ -35,7 +35,8 @@ __global__ void precon_vec_kernel(
     // Allocate shared mem for stencil and input_tile
     __shared__ scalar_t s_val[STENCIL_SIZE][NUM_ENTRY_PER_ROW];
     __shared__ int64_t s_col[STENCIL_SIZE][NUM_ENTRY_PER_ROW];
-    __shared__ scalar_t s_input_tile[TILE_SIZE];
+    __shared__ scalar_t s_input_tile[bs][TILE_SIZE];
+
 
     int tx = threadIdx.x; 
     int idx_tau = blockIdx.y * blockDim.x + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
@@ -44,59 +45,66 @@ __global__ void precon_vec_kernel(
 
     int idx_site = blockIdx.x;
     int stride_vs = Lx * Lx;
+    int stride_tau_vs = stride_vs * Ltau; 
     if (idx_site >= stride_vs) return;
 
     int Vs = Lx * Lx; 
 
-    // Load the input into shared memory
     int max_tx_num = std::min(Ltau - blockIdx.y * blockDim.x, blockDim.x);
-    if (tx < max_tx_num) {
-        s_input_tile[PAD + tx] = d_r[idx_tau * stride_vs + idx_site]; 
-    }
-  
-    if (tx < PAD) { // Left halo
-        // Possible that max_tx_num < PAD, but it's ok
-        int idx_tau_pad = mod(idx_tau - PAD, Ltau);  // left shift each idx_tau by PAD
-        s_input_tile[tx] = d_r[idx_tau_pad * stride_vs + idx_site]; 
-    }
+    for (int b = 0; b < bs; ++b) {
+        // Load the input into shared memory
+        if (tx < max_tx_num) {
+            s_input_tile[b][PAD + tx] = d_r[b * stride_tau_vs + idx_tau * stride_vs + idx_site]; 
+        }
 
-    if (tx >= blockDim.x - PAD) { // Right halo
-        // Delta = tx - (blockDim.x - PAD)
-        // idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + Delta, Ltau)
-        // d_r[idx_tau_pad * stride_vs + idx_site]
-        // s_input_tile[PAD + max_tx_num + Delta]
-        int idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + (tx - (blockDim.x - PAD)), Ltau); 
-        s_input_tile[PAD + max_tx_num + (tx - (blockDim.x - PAD))] = d_r[idx_tau_pad * stride_vs + idx_site]; 
-        // s_input_tile[tx + 2*PAD] = d_r[mod(idx_tau + PAD, Ltau) * stride_vs + idx_site]; for non-corner case
+        if (tx < PAD) { // Left halo
+            // Possible that max_tx_num < PAD, but it's ok
+            int idx_tau_pad = mod(idx_tau - PAD, Ltau);  // left shift each idx_tau by PAD
+            s_input_tile[b][tx] = d_r[b * stride_tau_vs + idx_tau_pad * stride_vs + idx_site]; 
+        }
+
+        if (tx >= blockDim.x - PAD) { // Right halo
+            // Delta = tx - (blockDim.x - PAD)
+            // idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + Delta, Ltau)
+            // d_r[idx_tau_pad * stride_vs + idx_site]
+            // s_input_tile[PAD + max_tx_num + Delta]
+            int idx_tau_pad = mod(blockIdx.y * blockDim.x + max_tx_num + (tx - (blockDim.x - PAD)), Ltau); 
+            s_input_tile[b][PAD + max_tx_num + (tx - (blockDim.x - PAD))] = d_r[b * stride_tau_vs + idx_tau_pad * stride_vs + idx_site]; 
+            // s_input_tile[tx + 2*PAD] = d_r[mod(idx_tau + PAD, Ltau) * stride_vs + idx_site]; for non-corner case
+        }
+
+        if (idx_tau < Ltau) {
+            // Load stencil into shared memory
+            int row_start = precon_crow[idx_tau * stride_vs + idx_site];
+            int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
+            for (int i = 0; i < row_size; ++i) {
+                s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+                s_col[tx][i] = precon_col[row_start + i];
+            }
+        }
     }
 
     if (idx_tau >= Ltau) return;
 
-    // Load stencil into shared memory
-    int row_start = precon_crow[idx_tau * stride_vs + idx_site];
-    int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
-    for (int i = 0; i < row_size; ++i) {
-        s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-        s_col[tx][i] = precon_col[row_start + i];
-    }
-
     __syncthreads();
 
     // Compute the output
-    scalar_t sum = make_cuFloatComplex(0.0f, 0.0f);
-    for (int i = 0; i < row_size; ++i) {
-        auto col = s_col[tx][i];
-        auto val = s_val[tx][i];
-        auto shift = col / Vs - idx_tau;
-        // Though if-control is entry-dependent, it only depends on a preconditioner, which is fixed.
-        if (shift < -PAD) {
-            shift += Ltau;  // [0, 16, 32, 48, 112, 128, 144], row_size = 7, 4x4x10
-        } else if (shift > PAD) {
-            shift -= Ltau; // [15, 63, 79, 95, 111, 127, 143, 159], row_size = 7, 4x4x10
+    for (int b = 0; b < bs; ++b) {
+        scalar_t sum = make_cuFloatComplex(0.0f, 0.0f);
+        for (int i = 0; i < row_size; ++i) {
+            auto col = s_col[tx][i];
+            auto val = s_val[tx][i];
+            auto shift = col / Vs - idx_tau;
+            // Though if-control is entry-dependent, it only depends on a preconditioner, which is fixed.
+            if (shift < -PAD) {
+                shift += Ltau;  // [0, 16, 32, 48, 112, 128, 144], row_size = 7, 4x4x10
+            } else if (shift > PAD) {
+                shift -= Ltau; // [15, 63, 79, 95, 111, 127, 143, 159], row_size = 7, 4x4x10
+            }
+            sum = cuCaddf(sum, cuCmulf(val, s_input_tile[b][PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH-1 + 2*PAD]
         }
-        sum = cuCaddf(sum, cuCmulf(val, s_input_tile[PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH-1 + 2*PAD]
+        out[b * stride_vs_tau + idx_tau * stride_vs + idx_site] = sum;
     }
-    out[idx_tau * stride_vs + idx_site] = sum;
 } // precon_vec_kernel
 } // namespace cuda_pcg
 
@@ -122,14 +130,12 @@ torch::Tensor precon_vec(
     
     dim3 block = {BLOCK_WIDTH};  
     auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
-    dim3 grid = {Vs, num_blocks};
+    dim3 grid = {Vs, num_blocks}; 
 
     // Verify that grid/block sizes are within device limits using:
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
     printf("Max threads per block: %d\n", prop.maxThreadsPerBlock);
-    // Check device pointer befor launch
-    printf("d_r: %p, precon_val: %p\n", d_r.data_ptr(), precon_val.data_ptr());
 
     using scalar_t = cuFloatComplex;
     if (d_r.dtype() == at::ScalarType::ComplexFloat) {
