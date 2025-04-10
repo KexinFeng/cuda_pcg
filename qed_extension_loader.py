@@ -20,7 +20,7 @@ num_threads = min(os.cpu_count(), nvcc_threads)
 NVCC_FLAGS += ["--threads", str(num_threads)]
 
 _C = load(
-    name="qed_fermion_module",  # Python module name
+    name="qed_fermion_module_v1",  # Python module name
     sources=[
         # "csrs/cuda_pcg_cusparse.cu",  # optional if you use it
         base_dir + "/csrs/precon_vec.cu",

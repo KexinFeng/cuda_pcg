@@ -9,7 +9,8 @@ from hmc_sampler_batch import HmcSampler
 from qed_extension_loader import _C
 
 # HMC inputs
-Lx, Ly, Ltau = 4, 4, 40
+Lx, Ly, Ltau = 2, 2, 40
+Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
 
@@ -24,6 +25,26 @@ out = _C.precon_vec(psi_u,
                 precon,
                 Lx)
 print("Result of PCG:", out[:10], out.shape)
+
+# print out precon and vec info
+crow = precon.crow_indices().to(torch.int32)
+col = precon.col_indices().to(torch.int32)
+val = precon.values().to(torch.complex64)    
+
+for r in range(Vs):
+    print('site:', r)
+    row_start = crow[r]
+    row_end = crow[r + 1]
+    for i in range(row_start, row_end):
+        print("Row:", r, "Col:", col[i].item(), "Val:", val.to_dense()[i].item())
+
+stride_vs = Vs
+for i in range(Vs):
+    print('site:', r)
+    offset = torch.arange(-6, 7, device = boson.device)
+    vec = psi_u[(0 + offset) % Ltau * stride_vs + i]
+    print(f'psi_vec = {vec}')
+
 
 # expected = torch.sparse.mm(precon, psi_u)
 # print("Expected result:", expected[:10])

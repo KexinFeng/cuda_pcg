@@ -87,12 +87,27 @@ __global__ void precon_vec_kernel(
     }
     __syncthreads();
 
-    // Compute the output
-    // ... 
-
     if (tx == 0 && blockIdx.y == 0) {
         printf("Debug: Code reached here. BlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
+        printf("BlockIdx.x: %d\n", blockIdx.x);
+        printf("s_col[0]: ");
+        for (int i = 0; i < NUM_ENTRY_PER_ROW; ++i) {
+            printf("%lld ", s_col[0][i]);
+        }
+        printf("\ns_val[0]: ");
+        for (int i = 0; i < NUM_ENTRY_PER_ROW; ++i) {
+            printf("(%f, %f) ", cuCrealf(s_val[0][i]), cuCimagf(s_val[0][i]));
+        }
+        printf("\ns_input_tile: ");
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            printf("(%f, %f) ", cuCrealf(s_input_tile[i]), cuCimagf(s_input_tile[i]));
+        }
+        printf("\n");
     }
+
+    // Compute the output
+    // ... 
+    
 }
 } // namespace cuda_pcg
 
@@ -127,11 +142,11 @@ torch::Tensor precon_vec(
     // Check device pointer befor launch
     printf("d_r: %p, precon_val: %p\n", d_r.data_ptr(), precon_val.data_ptr());
 
-    using scalar_t = c10::complex<float>;
+    using scalar_t = cuFloatComplex;
     if (d_r.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = c10::complex<float>; 
+        using scalar_t = cuFloatComplex; 
     } else if (d_r.dtype() == at::ScalarType::ComplexDouble) {
-        using scalar_t = c10::complex<double>;
+        using scalar_t = cuDoubleComplex;
     } else {
         throw std::invalid_argument("Unsupported data type");
     }
@@ -145,11 +160,11 @@ torch::Tensor precon_vec(
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, 0, stream>>>(
-        d_r.data_ptr<scalar_t>(), 
+        reinterpret_cast<scalar_t*>(d_r.data_ptr()), 
         precon_crow.data_ptr<int64_t>(), 
         precon_col.data_ptr<int64_t>(), 
-        precon_val.data_ptr<scalar_t>(), 
-        out.data_ptr<scalar_t>(), 
+        reinterpret_cast<scalar_t*>(precon_val.data_ptr()), 
+        reinterpret_cast<scalar_t*>(out.data_ptr()), 
         Lx, Ltau, bs);
 
     cudaError_t kernel_err = cudaGetLastError();
