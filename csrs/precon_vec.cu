@@ -16,8 +16,8 @@
 #define BLOCK_WIDTH 32
 #define PAD 6
 #define TILE_SIZE (BLOCK_WIDTH + 2 * PAD)
-#define KERNEL_SIZE (BLOCK_WIDTH + 2 * PAD)
-#define NUM_ENTRY_PER_ROW 13
+#define STENCIL_SIZE BLOCK_WIDTH
+#define NUM_ENTRY_PER_ROW 13 // PAD * 2 + 1
 #define NUM_STREAMS 32  // Reuse a fixed pool of streams; might needs to increase for Lx > 24
 
 namespace cuda_pcg {
@@ -33,9 +33,7 @@ __global__ void precon_vec_kernel(
     const int bs) 
 {
     // Allocate shared mem for stencil and input_tile
-    // __shared__ int64_t s_crow[Ltau * Lx * Lx + 1];
-    __shared__ int64_t s_col[KERNEL_SIZE][NUM_ENTRY_PER_ROW];
-    __shared__ scalar_t s_val[KERNEL_SIZE][NUM_ENTRY_PER_ROW];
+    __shared__ scalar_t s_val[STENCIL_SIZE][NUM_ENTRY_PER_ROW];
     __shared__ scalar_t s_input_tile[TILE_SIZE];
 
     int tx = threadIdx.x; 
@@ -68,57 +66,18 @@ __global__ void precon_vec_kernel(
     int row_start = precon_crow[idx_tau * stride_vs + idx_site];
     int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
     for (int i = 0; i < row_size; ++i) {
-        s_col[PAD + tx][i] = precon_col[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-        s_val[PAD + tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+        s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
     }
 
-    if (tx < PAD) { // Left halo
-        int idx_tau_pad = mod(idx_tau - PAD, Ltau);
-        int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
-        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
-        for (int i = 0; i < row_size_pad; ++i) {
-            s_col[tx][i] = precon_col[row_start_pad + i]; 
-            s_val[tx][i] = precon_val[row_start_pad + i];  
-        }
-    }
-    if (tx >= blockDim.x - PAD) { // Right halo
-        int idx_tau_pad = mod(idx_tau + PAD, Ltau);
-        int row_start_pad = precon_crow[idx_tau_pad * stride_vs + idx_site];
-        int row_size_pad = precon_crow[idx_tau_pad * stride_vs + idx_site + 1] - row_start_pad; 
-        for (int i = 0; i < row_size_pad; ++i) {
-            s_col[tx + 2*PAD][i] = precon_col[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-            s_val[tx + 2*PAD][i] = precon_val[row_start_pad + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-        }
-    }
     __syncthreads();
 
-    if (tx == 0 && blockIdx.y == 0 && blockIdx.x == 0) {
-        printf("Debug: Code reached here. \nBlockIdx.y: %d, ThreadIdx.x: %d\n", blockIdx.y, tx);
-        printf("BlockIdx.x: %d\n", blockIdx.x);
-        printf("s_col[0]: ");
-        
-        row_start = precon_crow[0 * stride_vs + idx_site];
-        row_size = precon_crow[0 * stride_vs + idx_site + 1] - row_start;
-        printf("row_size: %d\n", row_size);
-
-        for (int i = 0; i < NUM_ENTRY_PER_ROW && i < row_size; ++i) {
-            printf("%lld ", s_col[PAD][i]);
-        }
-        printf("\ns_val[0]: ");
-        for (int i = 0; i < NUM_ENTRY_PER_ROW && i < row_size; ++i) {
-            printf("(%f, %f) ", cuCrealf(s_val[PAD][i]), cuCimagf(s_val[PAD][i]));
-        }
-
-        printf("\ns_input_tile: ");
-        for (int i = 0; i < TILE_SIZE; ++i) {
-            printf("(%f, %f) ", cuCrealf(s_input_tile[i]), cuCimagf(s_input_tile[i]));
-        }
-        printf("\n");
-    }
-
     // Compute the output
-    // ... 
-    
+    scalar_t sum = make_cuFloatComplex(0.0f, 0.0f);
+    for (int i = 0; i < row_size && i < NUM_ENTRY_PER_ROW; ++i) {
+        int shift = i - row_size / 2;  // [-PAD, ..., PAD]
+        sum = cuCaddf(sum, cuCmulf(s_val[tx][i], s_input_tile[PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH + 2*PAD - 1]
+    }
+    out[idx_tau * stride_vs + idx_site] = sum;
 }
 } // namespace cuda_pcg
 
@@ -162,10 +121,9 @@ torch::Tensor precon_vec(
         throw std::invalid_argument("Unsupported data type");
     }
 
-    int shared_mem = (sizeof(int64_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_col
-                        + sizeof(scalar_t) * KERNEL_SIZE * NUM_ENTRY_PER_ROW  // s_val
-                        + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
-                        * BLOCK_WIDTH;           
+    int shared_mem = (sizeof(scalar_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW  // s_val
+                    + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
+                    * BLOCK_WIDTH;           
 
     printf("Shared memory requirement per block: %d bytes\n", shared_mem);
 
