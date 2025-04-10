@@ -35,13 +35,14 @@ __global__ void precon_vec_kernel(
     // Allocate shared mem for stencil and input_tile
     __shared__ scalar_t s_val[STENCIL_SIZE][NUM_ENTRY_PER_ROW];
     __shared__ int64_t s_col[STENCIL_SIZE][NUM_ENTRY_PER_ROW];
-    __shared__ scalar_t s_input_tile[bs][TILE_SIZE];
-
+    extern __shared__ scalar_t s_input_tile_1d[]; // Declare shared memory as a 1D array
+    scalar_t (*s_input_tile)[TILE_SIZE] = reinterpret_cast<scalar_t (*)[TILE_SIZE]>(s_input_tile_1d); // Cast to 2D array
 
     int tx = threadIdx.x; 
     int idx_tau = blockIdx.y * blockDim.x + tx;  // global temporal idx: [blockIdx.y, threadIdx.x]
     // BlockIdx.y ranges (num_blocks);
     // BlockDim.x == BLOCK_WIDTH, i.e. block_size_x
+    int row_size = 0;
 
     int idx_site = blockIdx.x;
     int stride_vs = Lx * Lx;
@@ -76,7 +77,7 @@ __global__ void precon_vec_kernel(
         if (idx_tau < Ltau) {
             // Load stencil into shared memory
             int row_start = precon_crow[idx_tau * stride_vs + idx_site];
-            int row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
+            row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
             for (int i = 0; i < row_size; ++i) {
                 s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
                 s_col[tx][i] = precon_col[row_start + i];
@@ -103,7 +104,7 @@ __global__ void precon_vec_kernel(
             }
             sum = cuCaddf(sum, cuCmulf(val, s_input_tile[b][PAD + tx + shift])); // PAD + tx + shift \in [0, BLOCK_WIDTH-1 + 2*PAD]
         }
-        out[b * stride_vs_tau + idx_tau * stride_vs + idx_site] = sum;
+        out[b * stride_tau_vs + idx_tau * stride_vs + idx_site] = sum;
     }
 } // precon_vec_kernel
 } // namespace cuda_pcg
@@ -146,14 +147,15 @@ torch::Tensor precon_vec(
         throw std::invalid_argument("Unsupported data type");
     }
 
-    int shared_mem = (sizeof(scalar_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW  // s_val
-                    + sizeof(scalar_t) * TILE_SIZE) // s_input_tile
-                    * BLOCK_WIDTH;           
-
-    printf("Shared memory requirement per block: %d bytes\n", shared_mem);
+    int static_shared_mem = sizeof(scalar_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW  // s_val
+                          + sizeof(int64_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW; // s_col
+    int dynamic_shared_mem = sizeof(scalar_t) * TILE_SIZE * bs; // s_input_tile_1d
+    int total_shared_mem = static_shared_mem + dynamic_shared_mem;
+    printf("Static shared memory: %d bytes, Dynamic shared memory: %d bytes, Total shared memory: %d bytes\n", 
+           static_shared_mem, dynamic_shared_mem, total_shared_mem);
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, 0, stream>>>(
+    cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, dynamic_shared_mem, stream>>>(
         reinterpret_cast<scalar_t*>(d_r.data_ptr()), 
         precon_crow.data_ptr<int64_t>(), 
         precon_col.data_ptr<int64_t>(), 

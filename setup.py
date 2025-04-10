@@ -34,7 +34,7 @@ extension = CUDAExtension(
     library_dirs=[
         os.path.join(CUDA_HOME, "lib64"),
     ],
-    libraries=["cudart", "cusparse", "cublas"],
+    # libraries=["cudart", "cusparse", "cublas"],
     extra_compile_args={
         "cxx": CXX_FLAGS,
         "nvcc": NVCC_FLAGS,
