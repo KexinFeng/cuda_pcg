@@ -15,6 +15,8 @@ hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
 
 R_u = hmc.draw_psudo_fermion()  # cdtype
+
+#------- batch_size = 1 -------     
 psi_u = R_u.to(torch.complex64).view(1, -1)
 
 hmc.reset_precon()
@@ -30,7 +32,7 @@ print("Expected result:", expected[-10:], expected.shape)
 torch.testing.assert_close(expected, out, atol=1e-6, rtol=0)
 
 
-# batch_size > 1
+#-------- batch_size > 1 -------
 bs = 2
 vec = R_u.to(torch.complex64).view(1, -1).repeat(bs, 1)
 out = _C.precon_vec(vec, 
