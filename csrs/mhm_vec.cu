@@ -10,13 +10,6 @@
 
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
-// overloading operators
-__device__ __host__ cuFloatComplex  operator+(cuFloatComplex a, cuFloatComplex b) { return cuCaddf(a,b); }
-__device__ __host__ cuFloatComplex  operator-(cuFloatComplex a, cuFloatComplex b) { return cuCsubf(a,b); }
-__device__ __host__ cuFloatComplex  operator*(cuFloatComplex a, cuFloatComplex b) { return cuCmulf(a,b); }
-__device__ __host__ cuFloatComplex  operator/(cuFloatComplex a, cuFloatComplex b) { return cuCdivf(a,b); }
-
-
 namespace cuda_pcg {
 template<typename scalar_t>
 __global__ void mhm_vec_kernel(
@@ -86,17 +79,8 @@ __global__ void mhm_vec_kernel(
             int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
 
             // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
-            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
-            
-            float boson_val;
-            if (idx_boson >= 0 && idx_boson < bs * stride_tau_vs_2) {
-                // boson_val = boson[idx_boson];
-                printf("b: %lld, idx_boson: %lld, stride_tau_vs_2: %lld\n", b, idx_boson, stride_tau_vs_2);                
-            } else {
-                printf("b: %lld, idx_boson: %lld, stride_tau_vs_2: %lld\n", b, idx_boson, stride_tau_vs_2);
-                printf("Error: Out-of-bound index detected in boson array.\n");
-                assert(false);  // Trigger a CUDA assertion failure
-            }
+            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);         
+            float boson_val = boson[idx_boson];
             cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
             cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
             cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
