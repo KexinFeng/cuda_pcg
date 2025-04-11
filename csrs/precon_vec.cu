@@ -73,18 +73,18 @@ __global__ void precon_vec_kernel(
             s_input_tile[b][PAD + max_tx_num + (tx - (blockDim.x - PAD))] = d_r[b * stride_tau_vs + idx_tau_pad * stride_vs + idx_site]; 
             // s_input_tile[tx + 2*PAD] = d_r[mod(idx_tau + PAD, Ltau) * stride_vs + idx_site]; for non-corner case
         }
-
-        if (idx_tau < Ltau) {
-            // Load stencil into shared memory
-            int row_start = precon_crow[idx_tau * stride_vs + idx_site];
-            row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
-            for (int i = 0; i < row_size; ++i) {
-                s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
-                s_col[tx][i] = precon_col[row_start + i];
-            }
-        }
     }
 
+    if (idx_tau < Ltau) {
+        // Load stencil into shared memory
+        int row_start = precon_crow[idx_tau * stride_vs + idx_site];
+        row_size = precon_crow[idx_tau * stride_vs + idx_site + 1] - row_start;  // ~ Num_ENTRY_PER_ROW
+        for (int i = 0; i < row_size; ++i) {
+            s_val[tx][i] = precon_val[row_start + i];  // [Ltau * Vs], tx->row of shared mat, i->col of shared mat
+            s_col[tx][i] = precon_col[row_start + i];
+        }
+    }
+    
     if (idx_tau >= Ltau) return;
 
     __syncthreads();
@@ -118,7 +118,6 @@ torch::Tensor precon_vec(
     TORCH_CHECK(precon.is_cuda(), "Kernel must be a CUDA tensor");
     TORCH_CHECK(d_r.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
 
-    // auto out = torch::empty_like(d_r);
     auto precon_crow = precon.crow_indices();
     auto precon_col = precon.col_indices();
     auto precon_val = precon.values();

@@ -9,7 +9,7 @@ from hmc_sampler_batch import HmcSampler
 # from qed_extension_loader import _C
 
 # HMC inputs
-Lx, Ly, Ltau = 4, 4, 10
+Lx, Ly, Ltau = 4, 4, 160
 Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
