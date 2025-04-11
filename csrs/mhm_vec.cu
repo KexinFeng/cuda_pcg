@@ -87,35 +87,36 @@ __global__ void mhm_vec_kernel(
 
             // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
             // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
-
+            
+            float boson_val;
             if (idx_boson >= 0 && idx_boson < bs * stride_tau_vs_2) {
-                float boson_val = boson[idx_boson];
+                // boson_val = boson[idx_boson];
                 printf("b: %lld, idx_boson: %lld, stride_tau_vs_2: %lld\n", b, idx_boson, stride_tau_vs_2);                
             } else {
                 printf("b: %lld, idx_boson: %lld, stride_tau_vs_2: %lld\n", b, idx_boson, stride_tau_vs_2);
                 printf("Error: Out-of-bound index detected in boson array.\n");
                 assert(false);  // Trigger a CUDA assertion failure
             }
-            // cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
-            // cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
-            // cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
-            // cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
-            // interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
-            // interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
+            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
+            cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
+            cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
+            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
         }
     }
 
     // Debugging code: Copy vec to out for verification
-    // for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-    //     for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-    //         int64_t global_x = offset_x * bw + tx;
-    //         int64_t global_y = offset_y * bw + ty;
-    //         if (global_x >= Lx || global_y >= Lx) {
-    //             continue;  // Skip out-of-bound threads
-    //         }
-    //         out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
-    //     }
-    // }
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
     __syncthreads();
 
 } // mhm_vec_kernel
@@ -127,25 +128,16 @@ torch::Tensor mhm_vec(
     const int64_t Lx,
     const float dtau)
 {
+    TORCH_CHECK(boson.dim() == 2, "Boson tensor must have 2 dimensions: [bs, Ltau * Vs * 2]");
+    TORCH_CHECK(vec.dim() == 2, "Input tensor must have 2 dimensions: [bs, Ltau * Vs]");
+    TORCH_CHECK(boson.size(0) == vec.size(0), "Batch size of boson and vec tensors must match");
+    TORCH_CHECK(boson.size(1) == vec.size(1) * 2, "Boson tensor's second dimension must be twice the size of vec's second dimension");
+
     TORCH_CHECK(vec.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
     TORCH_CHECK(boson.is_contiguous(), "Boson tensor must be contiguous");
-
-    auto boson_shape = boson.sizes();
-    std::cout << "Boson shape: [";
-    for (size_t i = 0; i < boson_shape.size(); ++i) {
-        std::cout << boson_shape[i];
-        if (i < boson_shape.size() - 1) {
-            std::cout << ", ";
-        }
-    }
-    std::cout << "]" << std::endl;
-    auto boson_data = boson.data_ptr<float>();
-    for (int64_t i = 0; i < boson.numel(); ++i) {
-        std::cout << "boson[" << i << "] = " << boson_data[i] << std::endl;
-    }
 
     auto out = torch::empty_like(vec);
     auto bs = vec.size(0);

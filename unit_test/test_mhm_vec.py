@@ -23,6 +23,7 @@ boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32).c
 
 psi_u = torch.arange(psi_u.numel(), device=psi_u.device).reshape(psi_u.shape).to(psi_u.dtype)
 
+print(boson.numel())
 out = _C.mhm_vec(boson, psi_u, Lx, float(0.1))
 print("Result:", out[0, :10], out.shape)
 
