@@ -10,6 +10,13 @@
 
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
+// overloading operators
+__device__ __host__ cuDoubleComplex  operator+(cuDoubleComplex a, cuDoubleComplex b) { return cuCadd(a,b); }
+__device__ __host__ cuDoubleComplex  operator-(cuDoubleComplex a, cuDoubleComplex b) { return cuCsub(a,b); }
+__device__ __host__ cuDoubleComplex  operator*(cuDoubleComplex a, cuDoubleComplex b) { return cuCmul(a,b); }
+__device__ __host__ cuDoubleComplex  operator/(cuDoubleComplex a, cuDoubleComplex b) { return cuCdiv(a,b); }
+
+
 namespace cuda_pcg {
 template<typename scalar_t>
 __global__ void o_vec_kernel(
@@ -18,7 +25,8 @@ __global__ void o_vec_kernel(
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
     const int Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
     const int Ltau, // typically 400, up to 24x40 = 960
-    const int bs)
+    const int bs, 
+    const float dtau)
 {
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
     size_t smem_offset = 0;
@@ -75,20 +83,28 @@ __global__ void o_vec_kernel(
             int i_vec = global_y * Lx + global_x;
             int j_vec = global_y * Lx + mod(global_x + 1, Lx) + Lx / 2;
 
-            interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
-            interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
+            // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
+            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
+            float boson_val = boson[idx_boson];
+            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
+            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
+            cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
+            cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
+            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
         }
     }
     __syncthreads();
 } // o_vec_kernel
 } // namespace cuda_pcg
 
-torch::Tensor m_vec(
+torch::Tensor mhm_vec(
     // const torch::Tensor& i_lists, // [4, i_list], |i_list| = Vs/2
     // const torch::Tensor& j_lists, // [4, j_list]
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
-    const int Lx)
+    const int Lx,
+    const float dtau)
 {
     TORCH_CHECK(vec.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
@@ -117,7 +133,7 @@ torch::Tensor m_vec(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),
-        Lx, Ltau, bs);
+        Lx, Ltau, bs, dtau);
         
     cudaError_t kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {

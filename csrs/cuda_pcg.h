@@ -17,3 +17,9 @@ torch::Tensor precon_vec(
     const torch::Tensor& precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
     int Lx); // Returns a tensor after applying preconditioning
 
+torch::Tensor mhm_vec(
+    const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
+    const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    const int Lx,
+    const float dtau);
+

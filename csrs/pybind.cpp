@@ -8,5 +8,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("mhm_vec", &mhm_vec, "MHM vector (CUDA)",
           py::arg("boson"),
           py::arg("vec"),
-          py::arg("Lx"));
+          py::arg("Lx"),
+          py::arg("dtau"));
 }
