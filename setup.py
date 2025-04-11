@@ -7,7 +7,8 @@ CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12
 
 # FLAGS
 CXX_FLAGS = ["-O0", "-g", "-fPIC", "-std=c++17"]
-NVCC_FLAGS = ["-O0", "-g", "-Xcompiler", "-fPIC", "-std=c++17"]
+# NVCC_FLAGS = ["-O1", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
+NVCC_FLAGS = ["-O0", "-g", "-G", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
@@ -23,7 +24,7 @@ extension = CUDAExtension(
     name="qed_fermion_module._C",  # the Python import name
     sources=[
         # "csrs/cuda_pcg_cusparse.cu",
-        "csrs/precon_vec.cu",
+        # "csrs/precon_vec.cu",
         "csrs/mhm_vec.cu",
         "csrs/pybind.cpp",
     ],
