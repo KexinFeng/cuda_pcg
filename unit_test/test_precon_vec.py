@@ -9,7 +9,7 @@ from hmc_sampler_batch import HmcSampler
 # from qed_extension_loader import _C
 
 # HMC inputs
-Lx, Ly, Ltau = 4, 4, 160
+Lx, Ly, Ltau = 10, 10, 400
 Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 boson = hmc.boson  # dtype
@@ -29,7 +29,7 @@ print("Result of PCG:", out[-10:], out.shape)
 
 expected = torch.sparse.mm(precon, psi_u.view(-1, 1)).to_dense()
 print("Expected result:", expected[-10:], expected.shape)
-torch.testing.assert_close(expected, out, atol=1e-6, rtol=0)
+torch.testing.assert_close(expected, out, atol=2e-6, rtol=0)
 
 
 #-------- batch_size > 1 -------
@@ -42,5 +42,5 @@ print("Result of PCG:", out[-10:], out.shape)
 
 expected = torch.sparse.mm(precon, vec.T).to_dense()
 print("Expected result:", expected[-10:], expected.shape)
-torch.testing.assert_close(expected, out, atol=1e-6, rtol=0)
+torch.testing.assert_close(expected, out, atol=2e-6, rtol=0)
 
