@@ -52,7 +52,15 @@ __global__ void mhm_vec_kernel(
                 continue;  // Skip out-of-bound threads
             }
             interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
-            out[global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
+            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
+
+            printf("vec[%d][%d][%d] = (%f, %f), out[%d][%d][%d] = (%f, %f)\n",
+                b, tau, global_y * Lx + global_x,
+                cuCrealf(vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x]),
+                cuCimagf(vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x]),
+                b, tau, global_y * Lx + global_x,
+                cuCrealf(out[global_y * Lx + global_x]),
+                cuCimagf(out[global_y * Lx + global_x]));
         }
     }
     __syncthreads();
@@ -62,38 +70,39 @@ __global__ void mhm_vec_kernel(
     // vec [Ltau, Ly, Lx]
     // center [Lx/2, Lx/2]
 
-    // fam1
-    int stride_tau_vs_2 = Ltau * Lx * Lx * 2;
-    int stride_vs_2 = Lx * Lx * 2;
-    int stride_lx_2 = Lx * 2;
-    for (int cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx/2, bw); cntr_offset_y++) {
-        for (int cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
-            int cntr_x = cntr_offset_x * bw + tx;
-            int cntr_y = cntr_offset_y * bw + ty;
+    // // fam1
+    // int stride_tau_vs_2 = Ltau * Lx * Lx * 2;
+    // int stride_vs_2 = Lx * Lx * 2;
+    // int stride_lx_2 = Lx * 2;
+    // for (int cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx/2, bw); cntr_offset_y++) {
+    //     for (int cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
+    //         int cntr_x = cntr_offset_x * bw + tx;
+    //         int cntr_y = cntr_offset_y * bw + ty;
 
-            int global_y = cntr_y;
-            int global_x = cntr_x + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;  // Skip out-of-bound threads
-            }         
+    //         int global_y = cntr_y;
+    //         int global_x = cntr_x + cntr_y % 2;
+    //         if (global_x >= Lx || global_y >= Lx) {
+    //             continue;  // Skip out-of-bound threads
+    //         }         
 
-            // fam1: x
-            int idx_boson = bs * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
-            int i_vec = global_y * Lx + global_x;
-            int j_vec = global_y * Lx + mod(global_x + 1, Lx) + Lx / 2;
+    //         // fam1: x
+    //         int idx_boson = bs * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
+    //         int i_vec = global_y * Lx + global_x;
+    //         int j_vec = global_y * Lx + mod(global_x + 1, Lx) + Lx / 2;
 
-            // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
-            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
-            cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
-            cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
-            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
-            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
-        }
-    }
-    __syncthreads();
+    //         // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
+    //         // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
+    //         float boson_val = boson[idx_boson];
+    //         cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
+    //         cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
+    //         cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
+    //         cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
+    //         interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+    //         interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+    //     }
+    // }
+    // __syncthreads();
+
 } // mhm_vec_kernel
 } // namespace cuda_pcg
 
@@ -106,6 +115,7 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(vec.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
+    TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
     auto out = torch::empty_like(vec);
     auto bs = vec.size(0);
     auto Vs = Lx * Lx;
@@ -120,10 +130,10 @@ torch::Tensor mhm_vec(
         throw std::invalid_argument("Unsupported data type");
     }
 
-    dim3 block(BLOCK_WIDTH, BLOCK_WIDTH);
-    dim3 grid(Ltau, bs);
+    dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
+    dim3 grid = {Ltau, bs};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Lx * Lx * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),
