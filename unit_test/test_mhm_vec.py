@@ -23,7 +23,8 @@ boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32)
 out = _C.mhm_vec(boson, psi_u, Lx, float(0.1)).view(-1, 1)
 print("Result:", out[-10:], out.shape)
 
-out_vec = torch.sparse.mm(boson, psi_u)
-print(out_vec[-10:], out_vec.shape)
+# Test if the output is close to the input
+torch.testing.assert_close(out, psi_u, rtol=1e-5, atol=1e-8)
+print("Test passed: Output is close to the input within tolerance.")
 
 

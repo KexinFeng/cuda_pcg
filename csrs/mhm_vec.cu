@@ -24,8 +24,6 @@ __global__ void mhm_vec_kernel(
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
     const int Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
-    const int Ltau, // typically 400, up to 24x40 = 960
-    const int bs, 
     const float dtau)
 {
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
@@ -34,9 +32,10 @@ __global__ void mhm_vec_kernel(
     smem_offset += Lx * Lx * sizeof(scalar_t);
     scalar_t* interm_vec_out = reinterpret_cast<scalar_t*>(smem + smem_offset);
  
-    // int Lx = blockDim.x;
-    // int Ltau = gridDim.x;
-    // int bs = gridDim.y;
+    int Ltau = gridDim.x;
+    int bs = gridDim.y;
+    int bw = blockDim.x;
+
     int stride_vs = Lx * Lx;
     int stride_tau_vs = stride_vs * Ltau;
 
@@ -45,7 +44,6 @@ __global__ void mhm_vec_kernel(
     int tau = blockIdx.x;
     int b = blockIdx.y;
 
-    int bw = BLOCK_WIDTH;
     for (int offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
         for (int offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
             int global_x = offset_x * bw + tx;
@@ -63,6 +61,7 @@ __global__ void mhm_vec_kernel(
     // boson [Ltau, Ly, Lx, 2]
     // vec [Ltau, Ly, Lx]
     // center [Lx/2, Lx/2]
+
     // fam1
     int stride_tau_vs_2 = Ltau * Lx * Lx * 2;
     int stride_vs_2 = Lx * Lx * 2;
@@ -128,7 +127,7 @@ torch::Tensor mhm_vec(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),
-        Lx, static_cast<int>(Ltau), static_cast<int>(bs), dtau);
+        Lx, dtau);
         
     cudaError_t kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {
