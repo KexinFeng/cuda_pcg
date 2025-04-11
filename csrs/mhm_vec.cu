@@ -89,8 +89,8 @@ __global__ void mhm_vec_kernel(
             cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
             cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
             cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
-            // interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
-            // interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
         }
     }
 

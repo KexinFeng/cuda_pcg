@@ -10,16 +10,16 @@ torch::Tensor pcg(
     torch::Tensor boson, 
     torch::Tensor psi_u, 
     torch::Tensor precon,
-    int Lx, int Ltau, int max_iter, double rtol); // precon is a torch.sparse.csr tensor
+    int64_t Lx, int64_t Ltau, int64_t max_iter, double rtol); // precon is a torch.sparse.csr tensor
 
 torch::Tensor precon_vec(
     const torch::Tensor& d_r,        // [bs, Ltau * Vs] complex64
     const torch::Tensor& precon,     // [Ltau * Vs, Ltau * Vs] complex64, sparse_csr
-    int Lx); // Returns a tensor after applying preconditioning
+    int64_t Lx); // Returns a tensor after applying preconditioning
 
 torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
-    const int Lx,
+    const int64_t Lx,
     const float dtau);
 
