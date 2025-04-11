@@ -71,7 +71,6 @@ __global__ void mhm_vec_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }         
-            printf("global_x: %lld, global_y: %lld\n", global_x, global_y);
 
             // fam1: x
             int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
