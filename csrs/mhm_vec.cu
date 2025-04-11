@@ -20,7 +20,7 @@ __device__ __host__ cuFloatComplex  operator/(cuFloatComplex a, cuFloatComplex b
 namespace cuda_pcg {
 template<typename scalar_t>
 __global__ void mhm_vec_kernel(
-    const scalar_t* __restrict__ boson,  // [bs, Ltau * Vs * 2] float32 
+    const float* __restrict__ boson,  // [bs, Ltau * Vs * 2] float32 
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
     const int Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
@@ -95,12 +95,10 @@ __global__ void mhm_vec_kernel(
         }
     }
     __syncthreads();
-} // o_vec_kernel
+} // mhm_vec_kernel
 } // namespace cuda_pcg
 
 torch::Tensor mhm_vec(
-    // const torch::Tensor& i_lists, // [4, i_list], |i_list| = Vs/2
-    // const torch::Tensor& j_lists, // [4, j_list]
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
     const int Lx,
@@ -130,7 +128,7 @@ torch::Tensor mhm_vec(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),
-        Lx, Ltau, bs, dtau);
+        Lx, static_cast<int>(Ltau), static_cast<int>(bs), dtau);
         
     cudaError_t kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {

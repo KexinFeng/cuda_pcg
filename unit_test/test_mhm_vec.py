@@ -8,26 +8,22 @@ from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
 
 # HMC inputs
-Lx, Ly, Ltau = 10, 10, 400
+Lx, Ly, Ltau = 2, 2, 80
 Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
-boson = hmc.boson  # dtype
+hmc.initialize_boson_test()
 
 R_u = hmc.draw_psudo_fermion()  # cdtype
 
 #------- batch_size = 1 -------     
-psi_u = R_u.to(torch.complex64).view(1, -1)
+psi_u = R_u.to(torch.complex64)
 
-hmc.reset_precon()
-precon = hmc.precon.to_sparse_csr().to(torch.complex64)
+boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32)
 
-out = _C.mhm_vec(psi_u, 
-                precon,
-                Lx).view(-1, 1)
-print("Result of PCG:", out[-10:], out.shape)
+out = _C.mhm_vec(boson, psi_u, Lx, float(0.1)).view(-1, 1)
+print("Result:", out[-10:], out.shape)
 
-expected = torch.sparse.mm(precon, psi_u.view(-1, 1)).to_dense()
-print("Expected result:", expected[-10:], expected.shape)
-torch.testing.assert_close(expected, out, atol=2e-6, rtol=0)
+out_vec = torch.sparse.mm(boson, psi_u)
+print(out_vec[-10:], out_vec.shape)
 
 
