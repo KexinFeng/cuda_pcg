@@ -19,7 +19,7 @@ __global__ void o_vec_kernel(
     const int Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
     const int Ltau, // typically 400, up to 24x40 = 960
     const int bs)
-) {
+{
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
     size_t smem_offset = 0;
     scalar_t* interm_vec_in = reinterpret_cast<scalar_t*>(smem + smem_offset);
@@ -88,8 +88,8 @@ torch::Tensor m_vec(
     // const torch::Tensor& j_lists, // [4, j_list]
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
-    const int Lx,
-) {
+    const int Lx)
+{
     TORCH_CHECK(vec.is_cuda(), "Input must be a CUDA tensor");
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
