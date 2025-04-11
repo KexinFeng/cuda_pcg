@@ -4,7 +4,7 @@
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     // m.def("add_tensors", &add_tensors, "Add two tensors (CUDA)");
     // m.def("pcg", &pcg, "Preconditioned Conjugate Gradient (CUDA)");
-    // m.def("precon_vec", &precon_vec, "Preconditioner vector (CUDA)");
+    m.def("precon_vec", &precon_vec, "Preconditioner vector (CUDA)");
     m.def("mhm_vec", &mhm_vec, "MHM vector (CUDA)",
           py::arg("boson"),
           py::arg("vec"),

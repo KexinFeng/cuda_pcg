@@ -23,7 +23,7 @@ __global__ void mhm_vec_kernel(
     const float* __restrict__ boson,  // [bs, Ltau * Vs * 2] float32 
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
-    const int Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
+    const int64_t Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
     const float dtau)
 {
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
@@ -32,26 +32,27 @@ __global__ void mhm_vec_kernel(
     smem_offset += Lx * Lx * sizeof(scalar_t);
     scalar_t* interm_vec_out = reinterpret_cast<scalar_t*>(smem + smem_offset);
  
-    int Ltau = gridDim.x;
-    int bs = gridDim.y;
-    int bw = blockDim.x;
+    int64_t Ltau = gridDim.x;
+    int64_t bs = gridDim.y;
+    int64_t bw = blockDim.x;
 
-    int stride_vs = Lx * Lx;
-    int stride_tau_vs = stride_vs * Ltau;
+    int64_t stride_vs = Lx * Lx;
+    int64_t stride_tau_vs = stride_vs * Ltau;
 
-    int tx = threadIdx.x;  
-    int ty = threadIdx.y;
-    int tau = blockIdx.x;
-    int b = blockIdx.y;
+    int64_t tx = threadIdx.x;  
+    int64_t ty = threadIdx.y;
+    int64_t tau = blockIdx.x;
+    int64_t b = blockIdx.y;
 
-    for (int offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int global_x = offset_x * bw + tx;
-            int global_y = offset_y * bw + ty;
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
             interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
+            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
         }
     }
     __syncthreads();
@@ -62,24 +63,24 @@ __global__ void mhm_vec_kernel(
     // center [Lx/2, Lx/2]
 
     // fam1
-    int stride_tau_vs_2 = Ltau * Lx * Lx * 2;
-    int stride_vs_2 = Lx * Lx * 2;
-    int stride_lx_2 = Lx * 2;
-    for (int cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx/2, bw); cntr_offset_y++) {
-        for (int cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
-            int cntr_x = cntr_offset_x * bw + tx;
-            int cntr_y = cntr_offset_y * bw + ty;
+    int64_t stride_tau_vs_2 = Ltau * Lx * Lx * 2;
+    int64_t stride_vs_2 = Lx * Lx * 2;
+    int64_t stride_lx_2 = Lx * 2;
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx/2, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
 
-            int global_y = cntr_y;
-            int global_x = cntr_x + cntr_y % 2;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }         
 
             // fam1: x
-            int idx_boson = bs * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
-            int i_vec = global_y * Lx + global_x;
-            int j_vec = global_y * Lx + mod(global_x + 1, Lx) + Lx / 2;
+            int64_t idx_boson = bs * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
+            int64_t i_vec = global_y * Lx + global_x;
+            int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx) + Lx / 2;
 
             // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
             // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);
@@ -88,22 +89,22 @@ __global__ void mhm_vec_kernel(
             cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
             cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
             cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
-            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
-            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+            // interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+            // interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
         }
     }
 
     // Debugging code: Copy vec to out for verification
-    for (int offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int global_x = offset_x * bw + tx;
-            int global_y = offset_y * bw + ty;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;  // Skip out-of-bound threads
-            }
-            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
-        }
-    }
+    // for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+    //     for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+    //         int64_t global_x = offset_x * bw + tx;
+    //         int64_t global_y = offset_y * bw + ty;
+    //         if (global_x >= Lx || global_y >= Lx) {
+    //             continue;  // Skip out-of-bound threads
+    //         }
+    //         out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
+    //     }
+    // }
     __syncthreads();
 
 } // mhm_vec_kernel
@@ -112,7 +113,7 @@ __global__ void mhm_vec_kernel(
 torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
-    const int Lx,
+    const int64_t Lx,
     const float dtau)
 {
     TORCH_CHECK(vec.is_cuda(), "Input must be a CUDA tensor");
