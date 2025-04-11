@@ -129,7 +129,7 @@ torch::Tensor precon_vec(
     auto Ltau = precon.size(0) / Vs;  // typically 400, up to 24x40 = 960
     
     dim3 block = {BLOCK_WIDTH};  
-    auto num_blocks = (Ltau + BLOCK_WIDTH - 1) / BLOCK_WIDTH; 
+    auto num_blocks = ceil_div(Ltau, BLOCK_WIDTH); 
     dim3 grid = {Vs, num_blocks}; 
 
     // Verify that grid/block sizes are within device limits using:

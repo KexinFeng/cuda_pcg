@@ -12,7 +12,7 @@
 
 namespace cuda_pcg {
 template<typename scalar_t>
-__global__ void o_vec_kernel(
+__global__ void mhm_vec_kernel(
     const scalar_t* __restrict__ boson,  // [bs, Ltau * Vs * 2] float32 
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
@@ -80,10 +80,10 @@ __global__ void o_vec_kernel(
         }
     }
     __syncthreads();
-} // o_vec_kernel
+} // mhm_vec_kernel
 } // namespace cuda_pcg
 
-torch::Tensor m_vec(
+torch::Tensor mhm_vec(
     // const torch::Tensor& i_lists, // [4, i_list], |i_list| = Vs/2
     // const torch::Tensor& j_lists, // [4, j_list]
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
@@ -113,7 +113,7 @@ torch::Tensor m_vec(
     dim3 block(BLOCK_WIDTH, BLOCK_WIDTH);
     dim3 grid(Ltau, bs);
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::O_vec_kernel<<<grid, block, 2 * Lx * Lx * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Lx * Lx * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),

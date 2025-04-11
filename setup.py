@@ -25,7 +25,8 @@ extension = CUDAExtension(
     name="qed_fermion_module._C",  # the Python import name
     sources=[
         # "csrs/cuda_pcg_cusparse.cu",
-        "csrs/precon_vec.cu",
+        # "csrs/precon_vec.cu",
+        "csrs/mhm_vec.cu",
         "csrs/pybind.cpp",
     ],
     include_dirs=[
