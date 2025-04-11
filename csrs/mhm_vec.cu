@@ -11,15 +11,15 @@
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
 // overloading operators
-__device__ __host__ cuDoubleComplex  operator+(cuDoubleComplex a, cuDoubleComplex b) { return cuCadd(a,b); }
-__device__ __host__ cuDoubleComplex  operator-(cuDoubleComplex a, cuDoubleComplex b) { return cuCsub(a,b); }
-__device__ __host__ cuDoubleComplex  operator*(cuDoubleComplex a, cuDoubleComplex b) { return cuCmul(a,b); }
-__device__ __host__ cuDoubleComplex  operator/(cuDoubleComplex a, cuDoubleComplex b) { return cuCdiv(a,b); }
+__device__ __host__ cuFloatComplex  operator+(cuFloatComplex a, cuFloatComplex b) { return cuCaddf(a,b); }
+__device__ __host__ cuFloatComplex  operator-(cuFloatComplex a, cuFloatComplex b) { return cuCsubf(a,b); }
+__device__ __host__ cuFloatComplex  operator*(cuFloatComplex a, cuFloatComplex b) { return cuCmulf(a,b); }
+__device__ __host__ cuFloatComplex  operator/(cuFloatComplex a, cuFloatComplex b) { return cuCdivf(a,b); }
 
 
 namespace cuda_pcg {
 template<typename scalar_t>
-__global__ void o_vec_kernel(
+__global__ void mhm_vec_kernel(
     const scalar_t* __restrict__ boson,  // [bs, Ltau * Vs * 2] float32 
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
@@ -110,17 +110,14 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
     auto out = torch::empty_like(vec);
-    auto bs = vec.size(0);  
-    auto Lx = i_lists.size(1) * 2;
+    auto bs = vec.size(0);
     auto Vs = Lx * Lx;
     auto Ltau = vec.size(1) / Vs; 
 
-    auto out = torch::empty_like(vec);
-
     using scalar_t = cuFloatComplex;
-    if (d_r.dtype() == at::ScalarType::ComplexFloat) {
+    if (vec.dtype() == at::ScalarType::ComplexFloat) {
         using scalar_t = cuFloatComplex; 
-    } else if (d_r.dtype() == at::ScalarType::ComplexDouble) {
+    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
         using scalar_t = cuDoubleComplex;
     } else {
         throw std::invalid_argument("Unsupported data type");
@@ -129,7 +126,7 @@ torch::Tensor mhm_vec(
     dim3 block(BLOCK_WIDTH, BLOCK_WIDTH);
     dim3 grid(Ltau, bs);
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::O_vec_kernel<<<grid, block, 2 * Lx * Lx * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Lx * Lx * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec.data_ptr()),
         reinterpret_cast<scalar_t*>(out.data_ptr()),
