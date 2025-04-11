@@ -8,7 +8,7 @@ from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
 
 # HMC inputs
-Lx, Ly, Ltau = 4, 4, 2
+Lx, Ly, Ltau = 6, 6, 240
 Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 hmc.initialize_boson_test()
@@ -23,8 +23,7 @@ boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32).c
 
 psi_u = torch.arange(psi_u.numel(), device=psi_u.device).reshape(psi_u.shape).to(psi_u.dtype)
 
-print(boson.numel())
-out = _C.mhm_vec(boson, psi_u, Lx, float(0.1))
+out = _C.mhm_vec(boson, psi_u, Lx, float(1e-8))
 print("Result:", out[0, :10], out.shape)
 
 print("Input:", psi_u[0, :10], psi_u.shape)

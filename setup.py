@@ -8,7 +8,7 @@ CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12
 # FLAGS
 CXX_FLAGS = ["-O0", "-g", "-fPIC", "-std=c++17"]
 # NVCC_FLAGS = ["-O1", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
-NVCC_FLAGS = ["-O0", "-g", "-G", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
+NVCC_FLAGS = ["-O0", "-g", "-G", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
