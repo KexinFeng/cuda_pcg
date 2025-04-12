@@ -20,9 +20,8 @@ __global__ void mhm_vec_kernel(
     const float dtau)
 {
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
-    size_t smem_offset = 0;
-    scalar_t* interm_vec_in = reinterpret_cast<scalar_t*>(smem + smem_offset);
-    scalar_t* interm_vec_out = reinterpret_cast<scalar_t*>(&smem[Lx*Lx]);
+    scalar_t* interm_vec_in = smem;
+    scalar_t* interm_vec_out = &smem[Lx*Lx];
 
     int64_t Ltau = gridDim.x;
     int64_t bs = gridDim.y;
