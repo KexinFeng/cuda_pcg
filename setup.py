@@ -16,7 +16,7 @@ CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 
 # Use NVCC threads to parallelize the build.
-nvcc_threads = int(os.getenv("NVCC_THREADS", 4))
+nvcc_threads = int(os.getenv("NVCC_THREADS", 8))
 num_threads = min(len(os.sched_getaffinity(0))//2, nvcc_threads)
 NVCC_FLAGS += ["--threads", str(num_threads)]
 
