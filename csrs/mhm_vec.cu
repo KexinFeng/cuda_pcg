@@ -10,7 +10,52 @@
 
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
+#define LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, code_block) \
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) { \
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) { \
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx; \
+            int64_t cntr_y = cntr_offset_y * bw + ty; \
+            int64_t global_y = cntr_y; \
+            int64_t global_x = cntr_x * 2 + cntr_y % 2; \
+            if (global_x >= Lx || global_y >= Lx) { \
+                continue; \
+            } \
+            code_block \
+        } \
+    }
+
+#define SWAP_IN_OUT \
+    tmp = interm_vec_in; \
+    interm_vec_in = interm_vec_out; \
+    interm_vec_out = tmp;   
+
+
 namespace cuda_pcg {
+template<typename scalar_t>
+__device__ void mat_vec_mul(    
+    const float* __restrict__ boson,
+    scalar_t* __restrict__ interm_vec_in,
+    scalar_t* __restrict__ interm_vec_out,
+    int64_t idx_boson,
+    int64_t i_vec,
+    int64_t j_vec,
+    float dtau_factor,
+) {
+    // vec_out[i_vec, j_vec] = mat @ vec_in[i_vec, j_vec]                  
+
+    float boson_val = boson[idx_boson];
+    cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau_factor), 0.0f);
+    cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau_factor), 0.0f);
+    float cos_boson = cosf(boson_val);
+    float sin_boson = sinf(boson_val);
+    cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
+    cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson); // exp(-1i * boson_val)
+
+    interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
+    interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
+}
+
 template<typename scalar_t>
 __global__ void mhm_vec_kernel(
     const float* __restrict__ boson,      // [bs, Ltau * Vs * 2] float32 
@@ -47,9 +92,8 @@ __global__ void mhm_vec_kernel(
             }
             interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + mod(tau + tau_roll, Ltau) * stride_vs + global_y * Lx + global_x];
         }
-    }
+    })
     __syncthreads();
-
 
     // boson [Ltau, Ly, Lx, 2]
     // vec [Ltau, Ly, Lx]
@@ -59,248 +103,86 @@ __global__ void mhm_vec_kernel(
     int64_t stride_lx_2 = Lx * 2;
 
     // // fam4
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam4: y
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
+        int64_t j_vec = global_y * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam4: y
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
-            int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
-            int64_t j_vec = global_y * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // // fam3
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam3: x
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
+        int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
+        int64_t j_vec = global_y * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam3: x
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
-            int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
-            int64_t j_vec = global_y * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // fam2
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam1: y
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = global_y * Lx + global_x;
+        int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam1: y
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
-            int64_t i_vec = global_y * Lx + global_x;
-            int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // // fam1
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
-            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam1: x
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
+        int64_t i_vec = global_y * Lx + global_x;
+        int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;  // Skip out-of-bound threads
-            }         
-
-            // fam1: x
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
-            int64_t i_vec = global_y * Lx + global_x;
-            int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
-
-            // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]) * interm_vec_in[j_vec];
-            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]) * interm_vec_in[i_vec];                    
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau);
+    })
     __syncthreads();
 
     // fam2
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam1: y
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = global_y * Lx + global_x;
+        int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam1: y
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
-            int64_t i_vec = global_y * Lx + global_x;
-            int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // fam3
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam3: x
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
+        int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
+        int64_t j_vec = global_y * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam3: x
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
-            int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
-            int64_t j_vec = global_y * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // fam4
-    tmp = interm_vec_in;
-    interm_vec_in = interm_vec_out;
-    interm_vec_out = tmp;
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+    SWAP_IN_OUT
+    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+        // fam4: y
+        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
+        int64_t j_vec = global_y * Lx + global_x;
 
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-
-            // fam4: y
-            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
-            int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
-            int64_t j_vec = global_y * Lx + global_x;
-
-            float boson_val = boson[idx_boson];
-            cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau/2), 0.0f);
-            cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau/2), 0.0f);
-            float cos_boson = cosf(boson_val);
-            float sin_boson = sinf(boson_val);
-            cuFloatComplex sinh_exp_pos = sinh_dtau * make_cuFloatComplex(cos_boson, sin_boson);  // exp(1i * boson_val)
-            cuFloatComplex sinh_exp_neg = sinh_dtau * make_cuFloatComplex(cos_boson, -sin_boson);  // exp(-1i * boson_val)
-            if (i_vec < stride_vs && j_vec < stride_vs) {
-                interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_exp_pos * interm_vec_in[j_vec];
-                interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
-            }
-        }
-    }
+        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+    })
     __syncthreads();
 
     // Export to out
