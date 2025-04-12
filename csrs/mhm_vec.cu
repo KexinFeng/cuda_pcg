@@ -17,7 +17,8 @@ __global__ void mhm_vec_kernel(
     const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
     scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
     const int64_t Lx,  // typically Lx^2 = 10x10 = 100, up to 24x24 = 576
-    const float dtau)
+    const float dtau, 
+    const int64_t tau_roll)
 {
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
     scalar_t* interm_vec_in = smem;
@@ -36,6 +37,7 @@ __global__ void mhm_vec_kernel(
     int64_t tau = blockIdx.x;
     int64_t b = blockIdx.y;
 
+    // Load to shared memory
     for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
         for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
             int64_t global_x = offset_x * bw + tx;
@@ -43,7 +45,7 @@ __global__ void mhm_vec_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x];
+            interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + mod(tau + tau_roll, Ltau) * stride_vs + global_y * Lx + global_x];
         }
     }
     __syncthreads();
@@ -309,11 +311,85 @@ __global__ void mhm_vec_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[b * stride_tau_vs + mod(tau + tau_roll, Ltau) * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
-
 } // mhm_vec_kernel
+
+template<typename scalar_t>
+__global__ void vec_minus_B_vec_kernel(
+    const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
+    const scalar_t* __restrict__ B_vec,     // [bs, Ltau * Vs] complex64
+    scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
+    const int64_t Lx)
+{
+    int64_t Ltau = gridDim.x;
+    int64_t bw = blockDim.x;
+
+    int64_t stride_vs = Lx * Lx;
+    int64_t stride_tau_vs = stride_vs * Ltau;
+
+    int64_t tx = threadIdx.x;  
+    int64_t ty = threadIdx.y;
+    int64_t tau = blockIdx.x;
+    int64_t b = blockIdx.y;
+
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+
+            if (tau > 0) {
+                scalar_t last_tau_B_vec = B_vec[b * stride_tau_vs + (tau - 1) * stride_vs + global_y * Lx + global_x];
+                out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] - last_tau_B_vec;
+            } else { // tau == 0
+                scalar_t last_tau_B_vec = B_vec[b * stride_tau_vs + (Ltau - 1) * stride_vs + global_y * Lx + global_x];
+                out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] + last_tau_B_vec;
+            }
+        }
+    }
+} // vec_minus_B_vec_kernel
+
+template<typename scalar_t>
+__global__ void vec_minus_B_vec_2_kernel(
+    const scalar_t* __restrict__ vec,     // [bs, Ltau * Vs] complex64
+    const scalar_t* __restrict__ B_vec,     // [bs, Ltau * Vs] complex64
+    scalar_t* __restrict__ out,           // [bs, Ltau * Vs] complex64
+    const int64_t Lx)
+{
+    int64_t Ltau = gridDim.x;
+    int64_t bw = blockDim.x;
+
+    int64_t stride_vs = Lx * Lx;
+    int64_t stride_tau_vs = stride_vs * Ltau;
+
+    int64_t tx = threadIdx.x;  
+    int64_t ty = threadIdx.y;
+    int64_t tau = blockIdx.x;
+    int64_t b = blockIdx.y;
+
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+
+            if (tau < Ltau - 1) {
+                scalar_t last_tau_B_vec = B_vec[b * stride_tau_vs + (tau + 1) * stride_vs + global_y * Lx + global_x];
+                out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] - last_tau_B_vec;
+            } else { // tau == Ltau - 1
+                scalar_t last_tau_B_vec = B_vec[b * stride_tau_vs + 0 * stride_vs + global_y * Lx + global_x];
+                out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = vec[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] + last_tau_B_vec;
+            }
+        }
+    }
+} // vec_minus_B_vec_2_kernel
+
 } // namespace cuda_pcg
 
 torch::Tensor mhm_vec(
@@ -333,7 +409,11 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
     TORCH_CHECK(boson.is_contiguous(), "Boson tensor must be contiguous");
 
-    auto out = torch::empty_like(vec);
+    auto vec_in = vec;
+    auto out1 = torch::empty_like(vec);
+    auto out2 = torch::empty_like(vec);
+    auto interm_vec = torch::empty_like(vec);
+
     auto bs = vec.size(0);
     auto Vs = Lx * Lx;
     auto Ltau = vec.size(1) / Vs; 
@@ -347,30 +427,92 @@ torch::Tensor mhm_vec(
         throw std::invalid_argument("Unsupported data type");
     }
 
+    cudaError_t kernel_err;
+    cudaError_t err;
+
     // B_vec_mul
     dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
     dim3 grid = {Ltau, bs};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
-        reinterpret_cast<scalar_t*>(vec.data_ptr()),
-        reinterpret_cast<scalar_t*>(out.data_ptr()),
-        Lx, dtau);
-        
-    cudaError_t kernel_err = cudaGetLastError();
+        reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+        reinterpret_cast<scalar_t*>(out1.data_ptr()),
+        Lx, dtau, 0);
+    kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {
         std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
         throw std::runtime_error("CUDA kernel launch failed");
     }
-
-    cudaError_t err = cudaStreamSynchronize(stream);
+    err = cudaStreamSynchronize(stream);
     if (err != cudaSuccess) {
         std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
         throw std::runtime_error("CUDA kernel execution failed");
     }
 
-    // M_vec_mul
+    // vec_minus_B_vec
+    cuda_pcg::vec_minus_B_vec_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+        reinterpret_cast<scalar_t*>(out1.data_ptr()),
+        reinterpret_cast<scalar_t*>(out2.data_ptr()),
+        Lx);
+    kernel_err = cudaGetLastError();
+    if (kernel_err != cudaSuccess) {
+        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+        throw std::runtime_error("CUDA kernel launch failed");
+    }
+    err = cudaStreamSynchronize(stream);
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+        throw std::runtime_error("CUDA kernel execution failed");
+    }
 
+    vec_in = out2;
+    cudaMemcpyAsync(
+        interm_vec.data_ptr(),
+        vec_in.data_ptr(),
+        vec_in.numel() * sizeof(scalar_t),
+        cudaMemcpyDeviceToDevice,
+        stream);
 
-    return out;      
+    // B_vec_mul
+    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+        reinterpret_cast<float*>(boson.data_ptr()),
+        reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+        reinterpret_cast<scalar_t*>(out1.data_ptr()),
+        Lx, dtau, 1);
+        
+    kernel_err = cudaGetLastError();
+    if (kernel_err != cudaSuccess) {
+        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+        throw std::runtime_error("CUDA kernel launch failed");
+    }
+
+    err = cudaStreamSynchronize(stream);
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+        throw std::runtime_error("CUDA kernel execution failed");
+    }
+
+    // vec_minus_B_vec
+    cuda_pcg::vec_minus_B_vec_2_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+        reinterpret_cast<scalar_t*>(out1.data_ptr()),
+        reinterpret_cast<scalar_t*>(out2.data_ptr()),
+        Lx);
+
+    kernel_err = cudaGetLastError();
+    if (kernel_err != cudaSuccess) {
+        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+        throw std::runtime_error("CUDA kernel launch failed");
+    }
+
+    err = cudaStreamSynchronize(stream);
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+        throw std::runtime_error("CUDA kernel execution failed");
+    }
+
+    out2 = torch::cat({out2, interm_vec}, 0);
+    return out2;      
 }
