@@ -412,7 +412,6 @@ torch::Tensor mhm_vec(
     auto vec_in = vec;
     auto out1 = torch::empty_like(vec);
     auto out2 = torch::empty_like(vec);
-    auto interm_vec = torch::empty_like(vec);
 
     auto bs = vec.size(0);
     auto Vs = Lx * Lx;
@@ -468,12 +467,6 @@ torch::Tensor mhm_vec(
     }
 
     vec_in = out2;
-    cudaMemcpyAsync(
-        interm_vec.data_ptr(),
-        vec_in.data_ptr(),
-        vec_in.numel() * sizeof(scalar_t),
-        cudaMemcpyDeviceToDevice,
-        stream);
 
     // B_vec_mul
     cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
@@ -513,6 +506,5 @@ torch::Tensor mhm_vec(
         throw std::runtime_error("CUDA kernel execution failed");
     }
 
-    out2 = torch::cat({out2, interm_vec}, 0);
     return out2;      
 }
