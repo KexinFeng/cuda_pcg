@@ -22,9 +22,15 @@ __global__ void mhm_vec_kernel(
     extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
     size_t smem_offset = 0;
     scalar_t* interm_vec_in = reinterpret_cast<scalar_t*>(smem + smem_offset);
-    smem_offset += Lx * Lx * sizeof(scalar_t);
-    scalar_t* interm_vec_out = reinterpret_cast<scalar_t*>(smem + smem_offset);
- 
+    smem_offset += Lx * Lx * sizeof(scalar_t); // This doesn't work since smem may not be continguous
+    // // Align to 8 bytes for complex64 (just to be safe)
+    // smem_offset = (smem_offset + 7) & ~0x7;
+    scalar_t* interm_vec_out = reinterpret_cast<scalar_t*>(&smem[Lx*Lx]);
+    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
+        printf("interm_vec_out offset: %ld bytes\n", reinterpret_cast<char*>(interm_vec_out) - reinterpret_cast<char*>(smem));
+        printf("smem[Vs*2] offset: %ld bytes\n", reinterpret_cast<char*>(&smem[Lx*Lx*2]) - reinterpret_cast<char*>(smem));
+    }
+
     int64_t Ltau = gridDim.x;
     int64_t bs = gridDim.y;
     int64_t bw = blockDim.x;
@@ -61,7 +67,7 @@ __global__ void mhm_vec_kernel(
     int64_t stride_lx_2 = Lx * 2;
     for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
         for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx/2, bw); cntr_offset_x++) {
-            // Slide the block over the family centers of shape [Lx/2, Lx]
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
             int64_t cntr_x = cntr_offset_x * bw + tx;
             int64_t cntr_y = cntr_offset_y * bw + ty;
 
@@ -77,28 +83,36 @@ __global__ void mhm_vec_kernel(
             int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
 
             // interm_vec_out[i_vec] = cosh(dtau) * interm_vec_in[i_vec] + sinh(dtau) * exp(1i * boson[idx_boson]);
-            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);         
+            // interm_vec_out[j_vec] = cosh(dtau) * interm_vec_in[j_vec] + sinh(dtau) * exp(-1i * boson[idx_boson]);        
+            if (tau == 0) {
+                printf("boson[%lld] = %f\n", idx_boson, boson[idx_boson]);
+            }
+            
             float boson_val = boson[idx_boson];
             cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau), 0.0f);
             cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau), 0.0f);
             cuFloatComplex exp_pos = make_cuFloatComplex(cosf(boson_val), sinf(boson_val));  // exp(1i * boson_val)
             cuFloatComplex exp_neg = make_cuFloatComplex(cosf(-boson_val), sinf(-boson_val));  // exp(-1i * boson_val)
-            interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
-            interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+            if (i_vec < stride_vs && j_vec < stride_vs) {
+                // interm_vec_out[i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+                // interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+                smem[stride_vs + i_vec] = cosh_dtau * interm_vec_in[i_vec] + sinh_dtau * exp_pos;
+                smem[stride_vs + j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_dtau * exp_neg;
+            }
         }
     }
 
     // Debugging code: Copy vec to out for verification
-    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int64_t global_x = offset_x * bw + tx;
-            int64_t global_y = offset_y * bw + ty;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;  // Skip out-of-bound threads
-            }
-            out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
-        }
-    }
+    // for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+    //     for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+    //         int64_t global_x = offset_x * bw + tx;
+    //         int64_t global_y = offset_y * bw + ty;
+    //         if (global_x >= Lx || global_y >= Lx) {
+    //             continue;  // Skip out-of-bound threads
+    //         }
+    //         out[b * stride_tau_vs + tau * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+    //     }
+    // }
     __syncthreads();
 
 } // mhm_vec_kernel
@@ -125,6 +139,17 @@ torch::Tensor mhm_vec(
     auto bs = vec.size(0);
     auto Vs = Lx * Lx;
     auto Ltau = vec.size(1) / Vs; 
+    // // Debug: Move boson to CPU and print them all out
+    // auto boson_cpu = boson.to(torch::kCPU);
+    // auto boson_data = boson_cpu.data_ptr<float>();
+    // std::cout << "Boson values:" << std::endl;
+    // for (int64_t i = 0; i < boson.numel(); ++i) {
+    //     std::cout << boson_data[i] << " ";
+    //     if ((i + 1) % (Lx * Lx * 2) == 0) {
+    //         std::cout << std::endl;  // Print a new line for each Ltau slice
+    //     }
+    // }
+    // std::cout << std::endl;
 
     using scalar_t = cuFloatComplex;
     if (vec.dtype() == at::ScalarType::ComplexFloat) {
