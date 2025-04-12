@@ -22,14 +22,8 @@ R_u = hmc.draw_psudo_fermion()  # cdtype
 #------- batch_size = 1 -------     
 psi_u = R_u.to(torch.complex64) # [bs, Ltau*Ly*Lx]
 mat = hmc.get_diag_B_test(hmc.boson)
-# indices = mat.coalesce().indices()
-# values = mat.coalesce().values()
-# filtered_indices = indices[:, indices[0] < Lx * Ly]
-# filtered_values = values[indices[0] < Lx * Ly]
-# print("mat (COO format): filtered indices=", filtered_indices, "filtered values=", filtered_values)
-# print("psi_u:", psi_u.view(-1)[:Lx*Ly])
 
-#         return MhM, [B1_list, B2_list, B3_list, B4_list], blk_sparsity, M
+# MhM, [B1_list, B2_list, B3_list, B4_list], blk_sparsity, M
 mhm, _, _, M = hmc.get_M_sparse(hmc.boson)
 expected = torch.sparse.mm(mhm, psi_u.T).to_dense()
 expected = expected.T
