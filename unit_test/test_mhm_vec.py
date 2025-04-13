@@ -46,7 +46,7 @@ torch.testing.assert_close(out[:1], expected, rtol=2e-5, atol=1e-7)
 
 
 # # #-------- batch_size > 1 -------
-bs = 2
+bs = 10
 psi_u = R_u.to(torch.complex64).view(1, -1).repeat(bs, 1) # [bs, Ltau*Ly*Lx]
 mhm, _, _, M = hmc.get_M_sparse(hmc.boson)
 expected = torch.empty_like(psi_u)
