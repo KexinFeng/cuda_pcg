@@ -8,7 +8,7 @@ from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
 
 # HMC inputs
-Lx, Ly, Ltau = 2, 2, 2
+Lx, Ly, Ltau = 10, 10, 400
 Vs = Lx * Lx
 print(f'max boson idx at tau=0, {Vs*2}')
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
@@ -24,12 +24,6 @@ psi_u = R_u.to(torch.complex64) # [bs, Ltau*Ly*Lx]
 boson = hmc.boson
 
 mat = hmc.get_diag_B_test(boson)
-indices = mat.coalesce().indices()
-values = mat.coalesce().values()
-filtered_indices = indices[:, indices[0] < Lx * Ly]
-filtered_values = values[indices[0] < Lx * Ly]
-print("mat (COO format): filtered indices=", filtered_indices, "filtered values=", filtered_values)
-print("psi_u:", psi_u.view(-1)[:Lx*Ly])
 
 expected = torch.sparse.mm(mat, psi_u.T).to_dense()
 expected = expected.T
