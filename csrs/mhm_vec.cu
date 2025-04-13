@@ -9,6 +9,7 @@
 
 
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
+#define NUM_STREAMS 10
 
 template<typename scalar_t>
 __device__ inline void mat_vec_mul_2b2(    
