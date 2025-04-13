@@ -39,9 +39,6 @@ boson = boson.permute(0, 4, 3, 2, 1).to(torch.float32).contiguous()
 psi_u = psi_u.view(Ltau, -1)
 out = torch.empty_like(psi_u)
 
-print('============')
-print(f"boson: {boson[0, 0].view(-1)}")
-print(f"psi_u: {psi_u[0].view(-1)}")
 for tau in range(Ltau):
     out[tau] = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1)
 
@@ -53,13 +50,17 @@ print("Success!")
 # #-------- batch_size > 1 -------
 bs = 2
 psi_u = R_u.to(torch.complex64).view(1, -1).repeat(bs, 1) # [bs, Ltau*Ly*Lx]
-expected = torch.sparse.mm(hmc.get_diag_B_test(hmc.boson), psi_u.T).to_dense()
-expected = expected.T
+psi_u = psi_u.view(bs, Ltau, -1)
 
 #
 boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32).contiguous()
 boson = boson.repeat(bs, 1)
 boson = boson.view(bs, Ltau, -1)
+
+expected = torch.empty_like(psi_u)  # [bs, Ltau, Lx*Ly]
+for b in range(bs):
+    B = hmc.get_diag_B_test(hmc.boson[b])
+    expected[b] = torch.sparse.mm(B, psi_u[b].view(-1).unsqueeze(1)).to_dense().view(Ltau, -1)
 
 out = torch.empty_like(psi_u)
 psi_u = psi_u.view(bs, Ltau, -1)
