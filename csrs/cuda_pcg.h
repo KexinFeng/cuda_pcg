@@ -1,7 +1,6 @@
 #pragma once
 #include <torch/extension.h>
 
-
 torch::Tensor add_tensors(torch::Tensor a, torch::Tensor b);
 
 torch::Tensor pcg(
@@ -23,3 +22,8 @@ torch::Tensor mhm_vec(
     const int64_t Lx,
     const float dtau);
 
+torch::Tensor b_vec_per_tau(
+    const torch::Tensor& boson,   // [Ltau * Vs * 2] float32
+    const torch::Tensor& vec,     // [Vs] complex64
+    const int64_t Lx,
+    const float dtau);

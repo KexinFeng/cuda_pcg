@@ -26,6 +26,7 @@ extension = CUDAExtension(
         # "csrs/cuda_pcg_cusparse.cu",
         # "csrs/precon_vec.cu",
         "csrs/mhm_vec.cu",
+        "csrs/b_vec_per_tau.cu",
         "csrs/pybind.cpp",
     ],
     include_dirs=[

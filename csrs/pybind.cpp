@@ -10,4 +10,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("vec"),
           py::arg("Lx"),
           py::arg("dtau"));
+    m.def("b_vec_per_tau", &b_vec_per_tau, "B vector (CUDA)",
+          py::arg("boson"),
+          py::arg("vec"),
+          py::arg("Lx"),
+          py::arg("dtau"));
 }
