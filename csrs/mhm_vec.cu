@@ -10,40 +10,17 @@
 
 #define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
-#define LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, code_block) \
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) { \
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) { \
-            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx; \
-            int64_t cntr_y = cntr_offset_y * bw + ty; \
-            int64_t global_y = cntr_y; \
-            int64_t global_x = cntr_x * 2 + cntr_y % 2; \
-            if (global_x >= Lx || global_y >= Lx) { \
-                continue; \
-            } \
-            code_block \
-        } \
-    }
-
-#define SWAP_IN_OUT \
-    tmp = interm_vec_in; \
-    interm_vec_in = interm_vec_out; \
-    interm_vec_out = tmp;   
-
-
-namespace cuda_pcg {
 template<typename scalar_t>
-__device__ void mat_vec_mul(    
+__device__ inline void mat_vec_mul_2b2(    
     const float* __restrict__ boson,
     scalar_t* __restrict__ interm_vec_in,
     scalar_t* __restrict__ interm_vec_out,
     int64_t idx_boson,
     int64_t i_vec,
     int64_t j_vec,
-    float dtau_factor,
-) {
+    float dtau_factor) 
+{
     // vec_out[i_vec, j_vec] = mat @ vec_in[i_vec, j_vec]                  
-
     float boson_val = boson[idx_boson];
     cuFloatComplex cosh_dtau = make_cuFloatComplex(coshf(dtau_factor), 0.0f);
     cuFloatComplex sinh_dtau = make_cuFloatComplex(sinhf(dtau_factor), 0.0f);
@@ -56,6 +33,13 @@ __device__ void mat_vec_mul(
     interm_vec_out[j_vec] = cosh_dtau * interm_vec_in[j_vec] + sinh_exp_neg * interm_vec_in[i_vec];
 }
 
+#define SWAP_IN_OUT \
+    tmp = interm_vec_in; \
+    interm_vec_in = interm_vec_out; \
+    interm_vec_out = tmp;   
+
+
+namespace cuda_pcg {
 template<typename scalar_t>
 __global__ void mhm_vec_kernel(
     const float* __restrict__ boson,      // [bs, Ltau * Vs * 2] float32 
@@ -92,7 +76,7 @@ __global__ void mhm_vec_kernel(
             }
             interm_vec_in[global_y * Lx + global_x] = vec[b * stride_tau_vs + mod(tau + tau_roll, Ltau) * stride_vs + global_y * Lx + global_x];
         }
-    })
+    }
     __syncthreads();
 
     // boson [Ltau, Ly, Lx, 2]
@@ -103,86 +87,156 @@ __global__ void mhm_vec_kernel(
     int64_t stride_lx_2 = Lx * 2;
 
     // // fam4
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
         // fam4: y
         int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
         int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
         int64_t j_vec = global_y * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }   
     __syncthreads();
 
     // // fam3
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
         // fam3: x
         int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
         int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
         int64_t j_vec = global_y * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
     __syncthreads();
 
     // fam2
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
         // fam1: y
         int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
         int64_t i_vec = global_y * Lx + global_x;
         int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
     __syncthreads();
 
     // // fam1
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
-        // fam1: x
-        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
-        int64_t i_vec = global_y * Lx + global_x;
-        int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam1: x
+            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 0;
+            int64_t i_vec = global_y * Lx + global_x;
+            int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau);
-    })
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau);
+        }
+    }
     __syncthreads();
 
     // fam2
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
-        // fam1: y
-        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
-        int64_t i_vec = global_y * Lx + global_x;
-        int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam1: y
+            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + global_x * 2 + 1;
+            int64_t i_vec = global_y * Lx + global_x;
+            int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
     __syncthreads();
 
     // fam3
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
-        // fam3: x
-        int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
-        int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
-        int64_t j_vec = global_y * Lx + global_x;
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam3: x
+            int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
+            int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
+            int64_t j_vec = global_y * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
     __syncthreads();
 
     // fam4
     SWAP_IN_OUT
-    LOOP_OVER_GLOBAL_CENTER_COORDINATES(Lx, bw, tx, ty, {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
         // fam4: y
         int64_t idx_boson = b * stride_tau_vs_2 + tau * stride_vs_2 + mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
         int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
         int64_t j_vec = global_y * Lx + global_x;
 
-        mat_vec_mul(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-    })
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
     __syncthreads();
 
     // Export to out
@@ -314,12 +368,13 @@ torch::Tensor mhm_vec(
     // B_vec_mul
     dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
     dim3 grid = {Ltau, bs};
+    int64_t tau_roll = 0;
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
-        Lx, dtau, 0);
+        Lx, dtau, tau_roll);
     kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {
         std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
@@ -351,11 +406,12 @@ torch::Tensor mhm_vec(
     vec_in = out2;
 
     // B_vec_mul
+    tau_roll = 1;
     cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
-        Lx, dtau, 1);
+        Lx, dtau, tau_roll);
         
     kernel_err = cudaGetLastError();
     if (kernel_err != cudaSuccess) {
