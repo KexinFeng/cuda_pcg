@@ -59,7 +59,7 @@ boson = boson.view(bs, Ltau, -1)
 
 expected = torch.empty_like(psi_u)  # [bs, Ltau, Lx*Ly]
 for b in range(bs):
-    B = hmc.get_diag_B_test(hmc.boson[b])
+    B = hmc.get_diag_B_test(hmc.boson)
     expected[b] = torch.sparse.mm(B, psi_u[b].view(-1).unsqueeze(1)).to_dense().view(Ltau, -1)
 
 out = torch.empty_like(psi_u)
