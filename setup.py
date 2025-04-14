@@ -1,3 +1,4 @@
+import time
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import os
@@ -8,7 +9,8 @@ CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12
 # FLAGS
 CXX_FLAGS = ["-O0", "-g", "-fPIC", "-std=c++17"]
 # NVCC_FLAGS = ["-O1", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
-NVCC_FLAGS = ["-O0", "-g", "-G", "-Xcompiler", "-fPIC", "-std=c++17"]
+# NVCC_FLAGS = ["-O0", "-g", "-G", "-Xcompiler", "-fPIC", "-std=c++17"]
+NVCC_FLAGS = ["-O0", "-g", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
@@ -17,7 +19,7 @@ NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 
 # Use NVCC threads to parallelize the build.
 nvcc_threads = int(os.getenv("NVCC_THREADS", 4))
-num_threads = min(len(os.sched_getaffinity(0))//2, nvcc_threads)
+num_threads = min(len(os.sched_getaffinity(0)), nvcc_threads)
 NVCC_FLAGS += ["--threads", str(num_threads)]
 
 extension = CUDAExtension(
@@ -42,9 +44,15 @@ extension = CUDAExtension(
     },
 )
 
+# Measure compilation time
+start_time = time.time()  # Start timer
+
 setup(
     name="Awsome_Project",
     version="0.1",
     ext_modules=[extension],
     cmdclass={"build_ext": BuildExtension},
 )
+end_time = time.time()  # End timer
+elapsed_time = end_time - start_time  # Calculate elapsed time
+print(f"Compilation Time: {elapsed_time:.2f} seconds")

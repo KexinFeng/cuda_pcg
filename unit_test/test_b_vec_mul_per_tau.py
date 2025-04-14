@@ -34,7 +34,7 @@ psi_u = psi_u.view(Ltau, -1)
 out = torch.empty_like(psi_u)
 
 for tau in range(Ltau):
-    out[tau] = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1)
+    out[tau] = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1, False)
 
 # Test if the output is close to the input
 torch.testing.assert_close(out.view(-1), expected.view(-1), rtol=1e-5, atol=1e-8)
@@ -60,8 +60,11 @@ out = torch.empty_like(psi_u)
 psi_u = psi_u.view(bs, Ltau, -1)
 for i in range(bs): 
     for tau in range(Ltau):
-        out[i, tau] = _C.b_vec_per_tau(boson[i, tau], psi_u[i, tau], Lx, 0.1)
+        out[i, tau] = _C.b_vec_per_tau(boson[i, tau], psi_u[i, tau], Lx, 0.1, False)
 
 # Test if the output is close to the input
 torch.testing.assert_close(out, expected, rtol=1e-5, atol=1e-8)
 print("Success!")
+
+# #-------- batch_size = 1 interm_out -------
+

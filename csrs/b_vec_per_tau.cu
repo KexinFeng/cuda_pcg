@@ -219,13 +219,284 @@ __global__ void b_vec_per_tau_kernel(
         }
     }
 } // b_vec_per_tau_kernel
+
+template<typename scalar_t>
+__global__ void b_vec_per_tau_interm_out_kernel(
+    const float* __restrict__ boson,      // [Ltau * Vs * 2] float32 
+    const scalar_t* __restrict__ vec,     // [Vs] complex64
+    scalar_t* __restrict__ out1,           // [Vs] complex64
+    scalar_t* __restrict__ out2,           // [Vs] complex64
+    scalar_t* __restrict__ out3,           // [Vs] complex64
+    scalar_t* __restrict__ out4,           // [Vs] complex64
+    scalar_t* __restrict__ out5,           // [Vs] complex64
+    scalar_t* __restrict__ out6,           // [Vs] complex64
+    const int64_t Lx,     
+    const float dtau)
+{
+    extern __shared__ scalar_t smem[];  // size: [Lx, Lx] * 2
+    scalar_t* interm_vec_in = smem;
+    scalar_t* interm_vec_out = &smem[Lx*Lx];
+    scalar_t* tmp; 
+
+    int64_t Ltau = gridDim.x;
+    int64_t bw = blockDim.x;
+
+    int64_t stride_vs = Lx * Lx;
+
+    int64_t tx = threadIdx.x;  
+    int64_t ty = threadIdx.y;
+
+    // Load to shared memory
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            interm_vec_in[global_y * Lx + global_x] = vec[global_y * Lx + global_x];
+        }
+    }
+    __syncthreads();
+
+    // boson [Ltau, Ly, Lx, 2]
+    // vec [Ltau, Ly, Lx]
+    // center [Lx/2, Lx/2]
+    int64_t stride_lx_2 = Lx * 2;
+
+    // // fam4
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+        // fam4: y
+        int64_t idx_boson = mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
+        int64_t j_vec = global_y * Lx + global_x;
+
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }   
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out1[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // // fam3
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+        // fam3: x
+        int64_t idx_boson = global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
+        int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
+        int64_t j_vec = global_y * Lx + global_x;
+
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out2[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // // fam2
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+        // fam1: y
+        int64_t idx_boson = global_y * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = global_y * Lx + global_x;
+        int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
+
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out3[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // // fam1
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam1: x
+            int64_t idx_boson = global_y * stride_lx_2 + global_x * 2 + 0;
+            int64_t i_vec = global_y * Lx + global_x;
+            int64_t j_vec = global_y * Lx + mod(global_x + 1, Lx);
+
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau);
+        }
+    }
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out4[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // fam2
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam1: y
+            int64_t idx_boson = global_y * stride_lx_2 + global_x * 2 + 1;
+            int64_t i_vec = global_y * Lx + global_x;
+            int64_t j_vec = mod(global_y + 1, Lx) * Lx + global_x;
+
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out5[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // fam3
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+            // fam3: x
+            int64_t idx_boson = global_y * stride_lx_2 + mod(global_x - 1, Lx) * 2 + 0;
+            int64_t i_vec = global_y * Lx + mod(global_x - 1, Lx);
+            int64_t j_vec = global_y * Lx + global_x;
+
+            mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
+    __syncthreads();
+
+    // Export to out
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
+            int64_t global_x = offset_x * bw + tx;
+            int64_t global_y = offset_y * bw + ty;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;  // Skip out-of-bound threads
+            }
+            out6[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+        }
+    }
+
+    // fam4
+    SWAP_IN_OUT
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
+            int64_t cntr_x = cntr_offset_x * bw + tx;
+            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t global_y = cntr_y;
+            int64_t global_x = cntr_x * 2 + cntr_y % 2;
+            if (global_x >= Lx || global_y >= Lx) {
+                continue;
+            }
+        // fam4: y
+        int64_t idx_boson = mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
+        int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
+        int64_t j_vec = global_y * Lx + global_x;
+
+        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
+        }
+    }
+
+} // b_vec_per_tau_iterm_out_kernel
 } // namespace cuda_pcg
 
 torch::Tensor b_vec_per_tau(
     const torch::Tensor& boson,   // [Vs * 2] float32
     const torch::Tensor& vec,     // [Vs] complex64
     const int64_t Lx,     
-    const float dtau)
+    const float dtau,
+    const bool interm_out_bool = false)
 {
     TORCH_CHECK(boson.dim() == 1, "Boson tensor must have 1 dimension: [Ltau * Vs * 2]");
     TORCH_CHECK(vec.dim() == 1, "Input tensor must have 1 dimension: [Vs]");
@@ -236,10 +507,10 @@ torch::Tensor b_vec_per_tau(
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
 
-    auto vec_in = vec;
-    auto out = torch::empty_like(vec);
+    torch::Tensor vec_in = vec;
+    torch::Tensor out;
 
-    auto Vs = Lx * Lx;
+    int64_t Vs = Lx * Lx;
 
     using scalar_t = cuFloatComplex;
     if (vec.dtype() == at::ScalarType::ComplexFloat) {
@@ -257,21 +528,58 @@ torch::Tensor b_vec_per_tau(
     dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
     // dim3 grid = {1};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    cuda_pcg::b_vec_per_tau_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
-        reinterpret_cast<float*>(boson.data_ptr()),
-        reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
-        reinterpret_cast<scalar_t*>(out.data_ptr()),
-        Lx, dtau);
+        
+    if (!interm_out_bool) {
+        out = torch::empty_like(vec);
 
-    kernel_err = cudaGetLastError();
-    if (kernel_err != cudaSuccess) {
-        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
-        throw std::runtime_error("CUDA kernel launch failed");
-    }
-    err = cudaStreamSynchronize(stream);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
-        throw std::runtime_error("CUDA kernel execution failed");
+        cuda_pcg::b_vec_per_tau_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+            reinterpret_cast<float*>(boson.data_ptr()),
+            reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
+            Lx, dtau);
+
+        kernel_err = cudaGetLastError();
+        if (kernel_err != cudaSuccess) {
+            std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+            throw std::runtime_error("CUDA kernel launch failed");
+        }
+        err = cudaStreamSynchronize(stream);
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA kernel execution failed");
+        }
+
+    } else {
+        torch::Tensor out1 = torch::empty_like(vec);
+        torch::Tensor out2 = torch::empty_like(vec);
+        torch::Tensor out3 = torch::empty_like(vec);
+        torch::Tensor out4 = torch::empty_like(vec);
+        torch::Tensor out5 = torch::empty_like(vec);
+        torch::Tensor out6 = torch::empty_like(vec);
+
+        cuda_pcg::b_vec_per_tau_interm_out_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), at::cuda::getCurrentCUDAStream()>>>(
+            reinterpret_cast<float*>(boson.data_ptr()),
+            reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
+            reinterpret_cast<scalar_t*>(out1.data_ptr()),
+            reinterpret_cast<scalar_t*>(out2.data_ptr()),
+            reinterpret_cast<scalar_t*>(out3.data_ptr()),
+            reinterpret_cast<scalar_t*>(out4.data_ptr()),
+            reinterpret_cast<scalar_t*>(out5.data_ptr()),
+            reinterpret_cast<scalar_t*>(out6.data_ptr()),
+            Lx, dtau);
+
+        kernel_err = cudaGetLastError();
+        if (kernel_err != cudaSuccess) {
+            std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
+            throw std::runtime_error("CUDA kernel launch failed");
+        }
+        err = cudaStreamSynchronize(stream);
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA kernel execution failed");
+        }
+
+        out = torch::cat({out1, out2, out3, out4, out5, out6}, 0);
     }
     
     return out;

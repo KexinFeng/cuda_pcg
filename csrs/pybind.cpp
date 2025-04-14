@@ -14,5 +14,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("boson"),
           py::arg("vec"),
           py::arg("Lx"),
-          py::arg("dtau"));
+          py::arg("dtau"),
+          py::arg("interm_out_bool"));
 }

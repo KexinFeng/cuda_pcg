@@ -319,13 +319,13 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
     TORCH_CHECK(boson.is_contiguous(), "Boson tensor must be contiguous");
 
-    auto vec_in = vec;
-    auto out1 = torch::empty_like(vec);
-    auto out2 = torch::empty_like(vec);
+    torch::Tensor vec_in = vec;
+    torch::Tensor out1 = torch::empty_like(vec);
+    torch::Tensor out2 = torch::empty_like(vec);
 
-    auto bs = vec.size(0);
-    auto Vs = Lx * Lx;
-    auto Ltau = vec.size(1) / Vs; 
+    int64_t bs = vec.size(0);
+    int64_t Vs = Lx * Lx;
+    int64_t Ltau = vec.size(1) / Vs; 
 
     using scalar_t = cuFloatComplex;
     if (vec.dtype() == at::ScalarType::ComplexFloat) {
