@@ -466,28 +466,6 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             out6[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
-
-    // fam4
-    SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
-            // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
-            int64_t global_y = cntr_y;
-            int64_t global_x = cntr_x * 2 + cntr_y % 2;
-            if (global_x >= Lx || global_y >= Lx) {
-                continue;
-            }
-        // fam4: y
-        int64_t idx_boson = mod(global_y - 1, Lx) * stride_lx_2 + global_x * 2 + 1;
-        int64_t i_vec = mod(global_y - 1, Lx) * Lx + global_x;
-        int64_t j_vec = global_y * Lx + global_x;
-
-        mat_vec_mul_2b2(boson, interm_vec_in, interm_vec_out, idx_boson, i_vec, j_vec, dtau / 2);
-        }
-    }
-
 } // b_vec_per_tau_iterm_out_kernel
 } // namespace cuda_pcg
 
@@ -526,7 +504,6 @@ torch::Tensor b_vec_per_tau(
 
     // B_vec_mul
     dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
-    // dim3 grid = {1};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
         
     if (!interm_out_bool) {
@@ -579,7 +556,7 @@ torch::Tensor b_vec_per_tau(
             throw std::runtime_error("CUDA kernel execution failed");
         }
 
-        out = torch::cat({out1, out2, out3, out4, out5, out6}, 0);
+        out = torch::stack({out1, out2, out3, out4, out5, out6}, 0);
     }
     
     return out;
