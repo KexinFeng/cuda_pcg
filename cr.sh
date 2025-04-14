@@ -1,5 +1,7 @@
+ninja -h
+
 cd ~/mount_folder/cuda_pcg/;
-MAX_JOBS=4 python setup.py build_ext --inplace || { echo "Build failed. Exiting."; exit 1; }
+MAX_JOBS=8 python setup.py build_ext --inplace || { echo "Build failed. Exiting."; exit 1; }
 # python unit_test/test_mhm_vec.py
 python unit_test/test_b_vec_mul_per_tau.py
 # compute-sanitizer --tool=memcheck python unit_test/test_mhm_vec.py
