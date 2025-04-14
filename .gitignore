@@ -14,7 +14,7 @@ logs/
 
 # Build files
 dist/
-build/
+build*/
 
 # OS-specific files
 .DS_Store
