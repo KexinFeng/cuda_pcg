@@ -43,4 +43,4 @@ print("Result of PCG:", out[-10:], out.shape)
 expected = torch.sparse.mm(precon, vec.T).to_dense()
 print("Expected result:", expected[-10:], expected.shape)
 torch.testing.assert_close(expected, out, atol=2e-6, rtol=0)
-
+print('Success!\n------')

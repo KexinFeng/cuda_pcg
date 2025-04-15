@@ -18,7 +18,7 @@ __device__ __host__ inline cuFloatComplex  operator/(cuFloatComplex a, cuFloatCo
   
 
 template<typename scalar_t>
-__device__ inline void mat_vec_mul_2b2(    
+__device__ void mat_vec_mul_2b2(    
     const float* __restrict__ boson,
     scalar_t* __restrict__ interm_vec_in,
     scalar_t* __restrict__ interm_vec_out,

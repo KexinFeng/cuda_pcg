@@ -7,7 +7,7 @@
 #include "cuda_pcg.h"
 #include "utils.h"
 
-#define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
+// #define BLOCK_WIDTH 64  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
 #define SWAP_IN_OUT \
     tmp = interm_vec_in; \
@@ -317,7 +317,6 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(boson.is_cuda(), "Boson must  CUDA tensor");
     TORCH_CHECK(vec.scalar_type() == at::ScalarType::ComplexFloat, "Input tensor must be of type ComplexFloat");
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
-    TORCH_CHECK(boson.is_contiguous(), "Boson tensor must be contiguous");
 
     torch::Tensor vec_in = vec;
     torch::Tensor out1 = torch::empty_like(vec);

@@ -13,12 +13,12 @@
 // TILE_SIZE = BLOCK_WIDTH + 2*PAD
 // STENCIL_SIZE is equal to BLOCK_WIDTH in this case
 // across the batch, stencil is shared.
-#define BLOCK_WIDTH 32
+#define BLOCK_WIDTH 64
 #define PAD 6
 #define TILE_SIZE (BLOCK_WIDTH + 2 * PAD)
 #define STENCIL_SIZE BLOCK_WIDTH
 #define NUM_ENTRY_PER_ROW 13 // PAD * 2 + 1
-#define NUM_STREAMS 32  // Reuse a fixed pool of streams; might needs to increase for Lx > 24
+// #define NUM_STREAMS 32  // Reuse a fixed pool of streams; might needs to increase for Lx > 24
 
 namespace cuda_pcg {
 template<typename scalar_t>
