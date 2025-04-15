@@ -7,7 +7,7 @@
 #include "cuda_pcg.h"
 #include "utils.h"
 
-#define BLOCK_WIDTH 8  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
+// #define BLOCK_SIZE 32  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
 #define SWAP_IN_OUT \
     tmp = interm_vec_in; \
@@ -224,12 +224,7 @@ template<typename scalar_t>
 __global__ void b_vec_per_tau_interm_out_kernel(
     const float* __restrict__ boson,      // [Ltau * Vs * 2] float32 
     const scalar_t* __restrict__ vec,     // [Vs] complex64
-    scalar_t* __restrict__ out1,           // [Vs] complex64
-    scalar_t* __restrict__ out2,           // [Vs] complex64
-    scalar_t* __restrict__ out3,           // [Vs] complex64
-    scalar_t* __restrict__ out4,           // [Vs] complex64
-    scalar_t* __restrict__ out5,           // [Vs] complex64
-    scalar_t* __restrict__ out6,           // [Vs] complex64
+    scalar_t* __restrict__ out,           // [6, Vs] complex64
     const int64_t Lx,     
     const float dtau)
 {
@@ -293,7 +288,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out1[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[0 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 
@@ -327,7 +322,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out2[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[1 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 
@@ -361,7 +356,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out3[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[2 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 
@@ -395,7 +390,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out4[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[3 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 
@@ -429,7 +424,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out5[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[4 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 
@@ -463,7 +458,7 @@ __global__ void b_vec_per_tau_interm_out_kernel(
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
-            out6[global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
+            out[5 * stride_vs + global_y * Lx + global_x] = interm_vec_out[global_y * Lx + global_x];
         }
     }
 } // b_vec_per_tau_iterm_out_kernel
@@ -503,7 +498,7 @@ torch::Tensor b_vec_per_tau(
     cudaError_t err;
 
     // B_vec_mul
-    dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
+    dim3 block = {4, ceil_div(BLOCK_SIZE, 4)};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
         
     if (!interm_out_bool) {
@@ -527,22 +522,13 @@ torch::Tensor b_vec_per_tau(
         }
 
     } else {
-        torch::Tensor out1 = torch::empty_like(vec);
-        torch::Tensor out2 = torch::empty_like(vec);
-        torch::Tensor out3 = torch::empty_like(vec);
-        torch::Tensor out4 = torch::empty_like(vec);
-        torch::Tensor out5 = torch::empty_like(vec);
-        torch::Tensor out6 = torch::empty_like(vec);
+        out = torch::empty_like(vec);     
+        out = out.repeat({6});
 
-        cuda_pcg::b_vec_per_tau_interm_out_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), at::cuda::getCurrentCUDAStream()>>>(
+        cuda_pcg::b_vec_per_tau_interm_out_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
             reinterpret_cast<float*>(boson.data_ptr()),
             reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
-            reinterpret_cast<scalar_t*>(out1.data_ptr()),
-            reinterpret_cast<scalar_t*>(out2.data_ptr()),
-            reinterpret_cast<scalar_t*>(out3.data_ptr()),
-            reinterpret_cast<scalar_t*>(out4.data_ptr()),
-            reinterpret_cast<scalar_t*>(out5.data_ptr()),
-            reinterpret_cast<scalar_t*>(out6.data_ptr()),
+            reinterpret_cast<scalar_t*>(out.data_ptr()),
             Lx, dtau);
 
         kernel_err = cudaGetLastError();
@@ -555,8 +541,6 @@ torch::Tensor b_vec_per_tau(
             std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
             throw std::runtime_error("CUDA kernel execution failed");
         }
-
-        out = torch::stack({out1, out2, out3, out4, out5, out6}, 0);
     }
     
     return out;

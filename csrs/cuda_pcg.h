@@ -1,7 +1,7 @@
 #pragma once
 #include <torch/extension.h>
 
-#define BLOCK_WIDTH 32    // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
+#define BLOCK_SIZE 32    // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
 torch::Tensor add_tensors(torch::Tensor a, torch::Tensor b);
 

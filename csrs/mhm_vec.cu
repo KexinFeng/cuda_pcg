@@ -7,7 +7,7 @@
 #include "cuda_pcg.h"
 #include "utils.h"
 
-// #define BLOCK_WIDTH 64  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
+// #define BLOCK_SIZE 32  // 8x8, limit 1024: 32x32, 512: 24x24, 256: 16x16, 128: 10x10
 
 #define SWAP_IN_OUT \
     tmp = interm_vec_in; \
@@ -339,7 +339,7 @@ torch::Tensor mhm_vec(
     cudaError_t err;
 
     // B_vec_mul
-    dim3 block = {BLOCK_WIDTH, BLOCK_WIDTH};
+    dim3 block = {4, ceil_div(BLOCK_SIZE, 4)};
     dim3 grid = {Ltau, bs};
     int64_t tau_roll = 0;
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
