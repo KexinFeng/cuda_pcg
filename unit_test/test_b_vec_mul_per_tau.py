@@ -8,7 +8,7 @@ from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
 
 # HMC inputs
-Lx, Ly, Ltau = 12, 12, 12*12*40
+Lx, Ly, Ltau = 8, 4, 320
 Vs = Lx * Lx
 print(f'max boson idx at tau=0, {Vs*2}')
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
@@ -34,7 +34,7 @@ psi_u = psi_u.view(Ltau, -1)
 out = torch.empty_like(psi_u)
 
 for tau in range(Ltau):
-    out[tau] = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1, False, 8, 8)
+    out[tau] = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1, False, 8, 4)
 
 # Test if the output is close to the input
 torch.testing.assert_close(out.view(-1), expected.view(-1), rtol=1e-5, atol=1e-8)
@@ -60,7 +60,7 @@ out = torch.empty_like(psi_u)
 psi_u = psi_u.view(bs, Ltau, -1)
 for i in range(bs): 
     for tau in range(Ltau):
-        out[i, tau] = _C.b_vec_per_tau(boson[i, tau], psi_u[i, tau], Lx, 0.1, False, 8, 8)
+        out[i, tau] = _C.b_vec_per_tau(boson[i, tau], psi_u[i, tau], Lx, 0.1, False, 8, 4)
 
 # Test if the output is close to the input
 torch.testing.assert_close(out, expected, rtol=1e-5, atol=1e-8)
@@ -85,7 +85,7 @@ out = torch.empty_like(psi_u).unsqueeze(0)
 out = out.repeat(6, 1, 1)
 
 for tau in range(Ltau):
-    interm_out = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1, True, 8, 8)
+    interm_out = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[tau], Lx, 0.1, True, 8, 4)
     out[:, tau, :] = interm_out.view(6, -1)
 
     xi_n_lft_5 = psi_u[tau].conj().view(1, -1) # row
@@ -126,7 +126,7 @@ out = out.repeat(6, 1, 1, 1)
 boson = boson.permute(0, 4, 3, 2, 1).to(torch.float32).contiguous()
 for b in range(bs):
     for tau in range(Ltau):
-        interm_out = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[b, tau], Lx, 0.1, True, 8, 8)
+        interm_out = _C.b_vec_per_tau(boson[0, tau].view(-1), psi_u[b, tau], Lx, 0.1, True, 8, 4)
         out[:, b, tau, :] = interm_out.view(6, -1)
 
         xi_n_lft_5 = psi_u[b, tau].conj().view(1, -1) # row

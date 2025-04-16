@@ -35,7 +35,7 @@ print('interm_vec:', interm_vec)
 
 #
 boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32).contiguous()
-out = _C.mhm_vec(boson, psi_u, Lx, 0.1)
+out = _C.mhm_vec(boson, psi_u, Lx, 0.1, 4, 8)
 print('------')
 print(out.shape)
 print(out)
@@ -55,7 +55,7 @@ for i in range(bs):
 
 boson = hmc.boson.permute(0, 4, 3, 2, 1).reshape(hmc.bs, -1).to(torch.float32).contiguous()
 boson = boson.repeat(bs, 1)
-out = _C.mhm_vec(boson, psi_u, Lx, 0.1)
+out = _C.mhm_vec(boson, psi_u, Lx, 0.1, 4, 8)
 
 # Test if the output is close to the input
 torch.testing.assert_close(out[:bs], expected, rtol=2e-5, atol=1e-7)

@@ -30,7 +30,8 @@ __global__ void mhm_vec_kernel(
     scalar_t* tmp; 
 
     int64_t Ltau = gridDim.x;
-    int64_t bw = blockDim.x;
+    int64_t bw_x = blockDim.x;
+    int64_t bw_y = blockDim.y;
 
     int64_t stride_vs = Lx * Lx;
     int64_t stride_tau_vs = stride_vs * Ltau;
@@ -41,10 +42,10 @@ __global__ void mhm_vec_kernel(
     int64_t b = blockIdx.y;
 
     // Load to shared memory
-    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int64_t global_x = offset_x * bw + tx;
-            int64_t global_y = offset_y * bw + ty;
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw_y); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw_x); offset_x++) {
+            int64_t global_x = offset_x * bw_x + tx;
+            int64_t global_y = offset_y * bw_y + ty;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
@@ -61,11 +62,11 @@ __global__ void mhm_vec_kernel(
     int64_t stride_lx_2 = Lx * 2;
 
     // // fam4
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -83,11 +84,11 @@ __global__ void mhm_vec_kernel(
 
     // // fam3
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -105,11 +106,11 @@ __global__ void mhm_vec_kernel(
 
     // fam2
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -127,11 +128,11 @@ __global__ void mhm_vec_kernel(
 
     // // fam1
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -149,11 +150,11 @@ __global__ void mhm_vec_kernel(
 
     // fam2
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -171,11 +172,11 @@ __global__ void mhm_vec_kernel(
 
     // fam3
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -193,11 +194,11 @@ __global__ void mhm_vec_kernel(
 
     // fam4
     SWAP_IN_OUT
-    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw); cntr_offset_y++) {
-        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw); cntr_offset_x++) {
+    for (int64_t cntr_offset_y = 0; cntr_offset_y < ceil_div(Lx, bw_y); cntr_offset_y++) {
+        for (int64_t cntr_offset_x = 0; cntr_offset_x < ceil_div(Lx / 2, bw_x); cntr_offset_x++) {
             // Slide the block over the family centers of a rectangle shape [Lx/2, Lx]
-            int64_t cntr_x = cntr_offset_x * bw + tx;
-            int64_t cntr_y = cntr_offset_y * bw + ty;
+            int64_t cntr_x = cntr_offset_x * bw_x + tx;
+            int64_t cntr_y = cntr_offset_y * bw_y + ty;
             int64_t global_y = cntr_y;
             int64_t global_x = cntr_x * 2 + cntr_y % 2;
             if (global_x >= Lx || global_y >= Lx) {
@@ -214,10 +215,10 @@ __global__ void mhm_vec_kernel(
     __syncthreads();
 
     // Export to out
-    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int64_t global_x = offset_x * bw + tx;
-            int64_t global_y = offset_y * bw + ty;
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw_y); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw_x); offset_x++) {
+            int64_t global_x = offset_x * bw_x + tx;
+            int64_t global_y = offset_y * bw_y + ty;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
@@ -234,7 +235,8 @@ __global__ void vec_minus_B_vec_kernel(
     const int64_t Lx)
 {
     int64_t Ltau = gridDim.x;
-    int64_t bw = blockDim.x;
+    int64_t bw_x = blockDim.x;
+    int64_t bw_y = blockDim.y;
 
     int64_t stride_vs = Lx * Lx;
     int64_t stride_tau_vs = stride_vs * Ltau;
@@ -244,10 +246,10 @@ __global__ void vec_minus_B_vec_kernel(
     int64_t tau = blockIdx.x;
     int64_t b = blockIdx.y;
 
-    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int64_t global_x = offset_x * bw + tx;
-            int64_t global_y = offset_y * bw + ty;
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw_y); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw_x); offset_x++) {
+            int64_t global_x = offset_x * bw_x + tx;
+            int64_t global_y = offset_y * bw_y + ty;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
@@ -271,7 +273,8 @@ __global__ void vec_minus_B_vec_2_kernel(
     const int64_t Lx)
 {
     int64_t Ltau = gridDim.x;
-    int64_t bw = blockDim.x;
+    int64_t bw_x = blockDim.x;
+    int64_t bw_y = blockDim.y;
 
     int64_t stride_vs = Lx * Lx;
     int64_t stride_tau_vs = stride_vs * Ltau;
@@ -281,10 +284,10 @@ __global__ void vec_minus_B_vec_2_kernel(
     int64_t tau = blockIdx.x;
     int64_t b = blockIdx.y;
 
-    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw); offset_y++) {
-        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw); offset_x++) {
-            int64_t global_x = offset_x * bw + tx;
-            int64_t global_y = offset_y * bw + ty;
+    for (int64_t offset_y = 0; offset_y < ceil_div(Lx, bw_y); offset_y++) {
+        for (int64_t offset_x = 0; offset_x < ceil_div(Lx, bw_x); offset_x++) {
+            int64_t global_x = offset_x * bw_x + tx;
+            int64_t global_y = offset_y * bw_y + ty;
             if (global_x >= Lx || global_y >= Lx) {
                 continue;  // Skip out-of-bound threads
             }
