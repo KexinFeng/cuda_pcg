@@ -132,10 +132,10 @@ torch::Tensor precon_vec(
     auto num_blocks = ceil_div(Ltau, BLOCK_WIDTH); 
     dim3 grid = {Vs, num_blocks}; 
 
-    // Verify that grid/block sizes are within device limits using:
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
-    printf("Max threads per block: %d\n", prop.maxThreadsPerBlock);
+    // // Verify that grid/block sizes are within device limits using:
+    // cudaDeviceProp prop;
+    // cudaGetDeviceProperties(&prop, 0);
+    // printf("Max threads per block: %d\n", prop.maxThreadsPerBlock);
 
     using scalar_t = cuFloatComplex;
     if (d_r.dtype() == at::ScalarType::ComplexFloat) {
@@ -149,9 +149,9 @@ torch::Tensor precon_vec(
     int64_t static_shared_mem = sizeof(scalar_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW  // s_val
                           + sizeof(int64_t) * STENCIL_SIZE * NUM_ENTRY_PER_ROW; // s_col
     int64_t dynamic_shared_mem = sizeof(scalar_t) * TILE_SIZE * bs; // s_input_tile_1d
-    int64_t total_shared_mem = static_shared_mem + dynamic_shared_mem;
-    printf("Static shared memory: %d bytes, Dynamic shared memory: %d bytes, Total shared memory: %d bytes\n", 
-           static_shared_mem, dynamic_shared_mem, total_shared_mem);
+    // int64_t total_shared_mem = static_shared_mem + dynamic_shared_mem;
+    // printf("Static shared memory: %d bytes, Dynamic shared memory: %d bytes, Total shared memory: %d bytes\n", 
+    //        static_shared_mem, dynamic_shared_mem, total_shared_mem);
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     cuda_pcg::precon_vec_kernel<scalar_t><<<grid, block, dynamic_shared_mem, stream>>>(

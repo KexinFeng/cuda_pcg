@@ -524,6 +524,7 @@ torch::Tensor b_vec_per_tau(
     } else {
         out = torch::empty_like(vec);     
         out = out.repeat({6});
+        out = out.view({6, -1});
 
         cuda_pcg::b_vec_per_tau_interm_out_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
             reinterpret_cast<float*>(boson.data_ptr()),

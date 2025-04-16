@@ -8,7 +8,7 @@ from qed_fermion_module import _C
 from hmc_sampler_batch import HmcSampler
 
 # HMC inputs
-Lx, Ly, Ltau = 4, 4, 160
+Lx, Ly, Ltau = 8, 8, 320
 Vs = Lx * Lx
 print(f'max boson idx at tau=0, {Vs*2}')
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
