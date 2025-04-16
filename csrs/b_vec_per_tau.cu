@@ -469,7 +469,9 @@ torch::Tensor b_vec_per_tau(
     const torch::Tensor& vec,     // [Vs] complex64
     const int64_t Lx,     
     const float dtau,
-    const bool interm_out_bool = false)
+    const bool interm_out_bool = false,
+    const int64_t block_size_x = 8,
+    const int64_t block_size_y = 8)
 {
     TORCH_CHECK(boson.dim() == 1, "Boson tensor must have 1 dimension: [Ltau * Vs * 2]");
     TORCH_CHECK(vec.dim() == 1, "Input tensor must have 1 dimension: [Vs]");
@@ -498,7 +500,7 @@ torch::Tensor b_vec_per_tau(
     cudaError_t err;
 
     // B_vec_mul
-    dim3 block = {4, ceil_div(BLOCK_SIZE, 4)};
+    dim3 block = {block_size_x, block_size_y};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
         
     if (!interm_out_bool) {

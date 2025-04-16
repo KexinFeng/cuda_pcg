@@ -306,7 +306,9 @@ torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
     const int64_t Lx,
-    const float dtau)
+    const float dtau,
+    const int64_t block_size_x = 8,
+    const int64_t block_size_y = 8)
 {
     TORCH_CHECK(boson.dim() == 2, "Boson tensor must have 2 dimensions: [bs, Ltau * Vs * 2]");
     TORCH_CHECK(vec.dim() == 2, "Input tensor must have 2 dimensions: [bs, Ltau * Vs]");
@@ -339,7 +341,7 @@ torch::Tensor mhm_vec(
     cudaError_t err;
 
     // B_vec_mul
-    dim3 block = {4, ceil_div(BLOCK_SIZE, 4)};
+    dim3 block = {block_size_x, block_size_y};
     dim3 grid = {Ltau, bs};
     int64_t tau_roll = 0;
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
