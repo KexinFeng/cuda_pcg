@@ -26,6 +26,14 @@ torch::Tensor mhm_vec(
     const int64_t block_size_x,
     const int64_t block_size_y);
 
+torch::Tensor mh_vec(
+    const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
+    const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    const int64_t Lx,
+    const float dtau,
+    const int64_t block_size_x,
+    const int64_t block_size_y);
+
 torch::Tensor b_vec_per_tau(
     const torch::Tensor& boson,   // [Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [Vs] complex64
