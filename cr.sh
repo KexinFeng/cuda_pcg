@@ -4,4 +4,4 @@ python unit_test/test_precon_vec.py
 python unit_test/test_mhm_vec.py
 python unit_test/test_b_vec_mul_per_tau.py
 # compute-sanitizer --tool=memcheck python unit_test/test_mhm_vec.py
-cp ~/mount_folder/cuda_pcg/qed_fermion_module/_C.cpython-39-x86_64-linux-gnu.so ~/hmc/qed_fermion/qed_fermion/
+cp ~/mount_folder/cuda_pcg/qed_fermion_module/*.so ~/hmc/qed_fermion/qed_fermion/
