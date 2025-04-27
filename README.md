@@ -3,6 +3,5 @@ In this repo, efficient cuda kernels for efficient matrix-vector multiplication 
 
 ## Latency Speedup
 
-![Latency Speedup](illustration/latency_speedup.png)
-
+![Speedup Plot](illustration/spdup.png)
 
