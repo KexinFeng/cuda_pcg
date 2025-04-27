@@ -5,3 +5,4 @@ In this repo, efficient cuda kernels for efficient matrix-vector multiplication 
 
 ![Speedup Plot](illustration/spdup.png)
 
+The benchmark code is applied in https://github.com/KexinFeng/qed_fermion/tree/pcg
