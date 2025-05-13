@@ -308,6 +308,8 @@ __global__ void vec_minus_B_vec_2_kernel(
 torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    torch::Tensor& out1,
+    torch::Tensor& out2,
     const int64_t Lx,
     const float dtau,
     const int64_t block_size_x = 8,
@@ -324,8 +326,8 @@ torch::Tensor mhm_vec(
     TORCH_CHECK(boson.scalar_type() == at::ScalarType::Float, "Boson tensor must be of type Float");
 
     torch::Tensor vec_in = vec;
-    torch::Tensor out1 = torch::empty_like(vec);
-    torch::Tensor out2 = torch::empty_like(vec);
+    // torch::Tensor out1 = torch::empty_like(vec);
+    // torch::Tensor out2 = torch::empty_like(vec);
 
     int64_t bs = vec.size(0);
     int64_t Vs = Lx * Lx;
