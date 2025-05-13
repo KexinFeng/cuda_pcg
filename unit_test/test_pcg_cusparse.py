@@ -1,7 +1,8 @@
 import sys
+import os
 
-sys.path.insert(0, '~/mount_folder/cuda_pcg')
-sys.path.insert(0, '~/hmc/qed_fermion/qed_fermion')
+sys.path.insert(0, os.path.expanduser('~/mount_folder/cuda_pcg'))
+sys.path.insert(0, os.path.expanduser('~/hmc/qed_fermion/qed_fermion'))
 
 import torch
 import qed_fermion_module._C as core

@@ -21,6 +21,8 @@ torch::Tensor precon_vec(
 torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    torch::Tensor& out1,
+    torch::Tensor& out2,
     const int64_t Lx,
     const float dtau,
     const int64_t block_size_x,
@@ -29,6 +31,8 @@ torch::Tensor mhm_vec(
 torch::Tensor mh_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    torch::Tensor& out1,
+    torch::Tensor& out2,
     const int64_t Lx,
     const float dtau,
     const int64_t block_size_x,
