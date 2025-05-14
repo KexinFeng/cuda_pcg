@@ -305,7 +305,7 @@ __global__ void vec_minus_B_vec_2_kernel(
 
 } // namespace cuda_pcg
 
-torch::Tensor mhm_vec(
+torch::Tensor mhm_vec2(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
     torch::Tensor& out1,
@@ -345,11 +345,14 @@ torch::Tensor mhm_vec(
     cudaError_t kernel_err;
     cudaError_t err;
 
-    // B_vec_mul
     dim3 block = {block_size_x, block_size_y};
     dim3 grid = {Ltau, bs};
     int64_t tau_roll = 0;
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    // cudaStreamCaptureStatus capture_status;
+    // cudaStreamIsCapturing(stream, &capture_status);
+
+    // B_vec_mul
     cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
@@ -512,4 +515,74 @@ torch::Tensor mh_vec(
     }
 
     return out2; 
+}
+
+__global__ void dummy_mhm_vec_kernel(const float* __restrict__ boson,
+                                     const cuFloatComplex* __restrict__ vec,
+                                     cuFloatComplex* __restrict__ out,
+                                     int Lx, float dtau, int tau_roll) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < Lx) {
+        float val = boson[i] + dtau + tau_roll;
+        out[i] = make_cuFloatComplex(val, val);
+    }
+}
+
+__global__ void dummy_vec_sub_kernel(const cuFloatComplex* a, const cuFloatComplex* b, cuFloatComplex* out, int N) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        out[i] = cuCsubf(a[i], b[i]);
+    }
+}
+
+torch::Tensor mhm_vec(
+    const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
+    const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
+    torch::Tensor& out1,
+    torch::Tensor& out2,
+    const int64_t Lx,
+    const float dtau,
+    const int64_t block_size_x = 8,
+    const int64_t block_size_y = 8)
+{
+    TORCH_CHECK(boson.dim() == 2);
+    TORCH_CHECK(vec.dim() == 2);
+    TORCH_CHECK(boson.size(1) == vec.size(1) * 2);
+
+    int64_t bs = vec.size(0);
+    int64_t Vs = Lx * Lx;
+    int64_t Ltau = vec.size(1) / Vs;
+    dim3 block(block_size_x, block_size_y);
+    dim3 grid((Ltau + block.x - 1) / block.x, bs);
+
+    // torch::Tensor out1 = torch::empty_like(vec);
+    // torch::Tensor out2 = torch::empty_like(vec);
+
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    dummy_mhm_vec_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const float*>(boson.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(vec.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out1.data_ptr()),
+        Lx, dtau, 0);
+
+    dummy_vec_sub_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const cuFloatComplex*>(vec.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out1.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out2.data_ptr()),
+        vec.numel());
+
+    dummy_mhm_vec_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const float*>(boson.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out2.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out1.data_ptr()),
+        Lx, dtau, 1);
+
+    dummy_vec_sub_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const cuFloatComplex*>(out2.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out1.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out2.data_ptr()),
+        vec.numel());
+
+    return out2;
 }
