@@ -17,7 +17,7 @@ NVCC_FLAGS = ["-O3", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
-CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
+CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}", "-DTORCH_USE_CUDA_DSA"]
 NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 
 # Use NVCC threads to parallelize the build.
