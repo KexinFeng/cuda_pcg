@@ -1,6 +1,10 @@
 import torch
 from torch.utils.cpp_extension import load
 import os
+import time
+
+# Measure compilation time
+start_time = time.time()  # Start timer
 
 # Loader
 CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12.0")
@@ -37,6 +41,10 @@ _C = load(
     extra_cuda_cflags=NVCC_FLAGS,
     verbose=True,
 )
+
+end_time = time.time()  # End timer
+elapsed_time = end_time - start_time  # Calculate elapsed time
+print(f"Compilation Time: {elapsed_time:.2f} seconds")
 
 # Main
 Lx, Ltau, bs = 4, 4, 2
