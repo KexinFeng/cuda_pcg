@@ -17,7 +17,7 @@ NVCC_FLAGS = ["-O3", "-Xcompiler", "-fPIC", "-std=c++17"]
 
 # CXX11 ABI
 USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
-CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}", "-DTORCH_USE_CUDA_DSA"]
+CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 
 # Use NVCC threads to parallelize the build.
@@ -26,6 +26,23 @@ num_threads = max(2, min(len(os.sched_getaffinity(0)) - 2, nvcc_threads))
 print(f'----->{num_threads}<------') 
 # os.sched_getaffinity(0) = num_cores + 2; ninja -j N  N_default=os.sched_getaffinity(0) + 2
 NVCC_FLAGS += ["--threads", str(num_threads)]
+
+# Version
+cuda_version = torch.version.cuda
+major, minor = map(int, cuda_version.split("."))
+
+if (major, minor) >= (12, 1):
+    arch = "89"
+elif (major, minor) >= (11, 8):
+    arch = "86"
+elif (major, minor) >= (11, 1):
+    arch = "80"
+else:
+    arch = "75"
+
+NVCC_FLAGS += [
+    f"-gencode=arch=compute_{arch},code=sm_{arch}"
+]
 
 extension = CUDAExtension(
     name="qed_fermion_module._C",  # the Python import name

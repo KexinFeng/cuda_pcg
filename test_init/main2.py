@@ -3,7 +3,8 @@ import torch
 # Load the CUDA extension
 _C = load(
     name="_C",
-    sources=["csrs/pybind.cpp", "csrs/cuda_pcg.cu"],
+    sources=["csrs/pybind.cpp", 
+             "csrs/cuda_pcg.cu"],
     verbose=True
 )
 
