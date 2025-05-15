@@ -2,6 +2,8 @@ import torch
 from torch.utils.cpp_extension import load
 import os
 import time
+import shutil
+import glob
 
 # Measure compilation time
 start_time = time.time()  # Start timer
@@ -30,6 +32,8 @@ print(f'----->{num_threads}<------')
 # os.sched_getaffinity(0) = num_cores + 2; ninja -j N  N_default=os.sched_getaffinity(0) + 2
 NVCC_FLAGS += ["--threads", str(num_threads)]
 
+os.makedirs("./graphsafe_test/build", exist_ok=True)
+
 _C = load(
     name="_C", 
     sources=["./graphsafe_test/device_func.cu",
@@ -40,11 +44,19 @@ _C = load(
     extra_cflags=CXX_FLAGS,
     extra_cuda_cflags=NVCC_FLAGS,
     verbose=True,
+    build_directory="./graphsafe_test/build",
+    is_python_module=True,
 )
 
 end_time = time.time()  # End timer
 elapsed_time = end_time - start_time  # Calculate elapsed time
 print(f"Compilation Time: {elapsed_time:.2f} seconds")
+
+so_files = glob.glob("./graphsafe_test/build/*.so")
+dst_dir = os.path.expanduser("~/hmc/qed_fermion/qed_fermion/")
+for so_file in so_files:
+    shutil.copy(so_file, dst_dir)
+print(f"Copied {len(so_files)} .so files to {dst_dir}")
 
 # Main
 Lx, Ltau, bs = 4, 4, 2
@@ -68,7 +80,7 @@ s = torch.cuda.Stream()
 s.wait_stream(torch.cuda.current_stream())
 with torch.cuda.stream(s):
     for _ in range(3):
-        tmp = _C.mhm_vec2(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+        tmp = _C.mhm_vec(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
         x.copy_(tmp)
     s.synchronize()
 torch.cuda.current_stream().wait_stream(s)
