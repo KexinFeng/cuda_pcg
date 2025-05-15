@@ -1,11 +1,44 @@
 import torch
 from torch.utils.cpp_extension import load
+import os
+
+# Loader
+CUDA_HOME = os.environ.get("CUDA_HOME", "/common/software/install/manual/cuda/12.0")
+
+# FLAGS
+# CXX_FLAGS = ["-O0", "-g", "-fPIC", "-std=c++17"]
+CXX_FLAGS = ["-O3", "-fPIC", "-std=c++17"]
+# NVCC_FLAGS = ["-O1", "-lineinfo", "-Xcompiler", "-fPIC", "-std=c++17"]
+# NVCC_FLAGS = ["-O0", "-g", "-G", "-Xcompiler", "-fPIC", "-std=c++17"]
+NVCC_FLAGS = ["-O3", "-Xcompiler", "-fPIC", "-std=c++17"]  
+# -g +9s -O0,O2,O3 +3s
+# total 47s for [3/3] files
+
+# CXX11 ABI
+USE_CXX11_ABI = 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
+CXX_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
+NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
+
+# Use NVCC threads to parallelize the build.
+nvcc_threads = int(os.getenv("NVCC_THREADS", 8))
+num_threads = max(2, min(len(os.sched_getaffinity(0)) - 2, nvcc_threads))
+print(f'----->{num_threads}<------') 
+# os.sched_getaffinity(0) = num_cores + 2; ninja -j N  N_default=os.sched_getaffinity(0) + 2
+NVCC_FLAGS += ["--threads", str(num_threads)]
+
 _C = load(
     name="_C", 
     sources=["./graphsafe_test/device_func.cu",
              "./graphsafe_test/mhm_vec_graphsafe.cu"], 
-    verbose=True)
+    extra_include_paths=[
+        os.path.join(CUDA_HOME, "include"),
+    ],
+    extra_cflags=CXX_FLAGS,
+    extra_cuda_cflags=NVCC_FLAGS,
+    verbose=True,
+)
 
+# Main
 Lx, Ltau, bs = 4, 4, 2
 Ly = Lx
 Vs = Lx * Lx
@@ -27,7 +60,7 @@ s = torch.cuda.Stream()
 s.wait_stream(torch.cuda.current_stream())
 with torch.cuda.stream(s):
     for _ in range(3):
-        tmp = _C.mhm_vec(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+        tmp = _C.mhm_vec2(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
         x.copy_(tmp)
     s.synchronize()
 torch.cuda.current_stream().wait_stream(s)
