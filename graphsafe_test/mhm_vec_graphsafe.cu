@@ -159,6 +159,48 @@ torch::Tensor mhm_vec(
     const float dtau,
     const int64_t block_size_x = 8,
     const int64_t block_size_y = 8)
+{
+    TORCH_CHECK(boson.dim() == 2);
+    TORCH_CHECK(vec.dim() == 2);
+    TORCH_CHECK(boson.size(1) == vec.size(1) * 2);
+
+    int64_t bs = vec.size(0);
+    int64_t Vs = Lx * Lx;
+    int64_t Ltau = vec.size(1) / Vs;
+    dim3 block(block_size_x, block_size_y);
+    dim3 grid((Ltau + block.x - 1) / block.x, bs);
+
+    // torch::Tensor out1 = torch::empty_like(vec);
+    // torch::Tensor out2 = torch::empty_like(vec);
+
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    dummy_mhm_vec_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const float*>(boson.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(vec.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out1.data_ptr()),
+        Lx, dtau, 0);
+
+    dummy_vec_sub_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const cuFloatComplex*>(vec.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out1.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out2.data_ptr()),
+        vec.numel());
+
+    dummy_mhm_vec_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const float*>(boson.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out2.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out1.data_ptr()),
+        Lx, dtau, 1);
+
+    dummy_vec_sub_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const cuFloatComplex*>(out2.data_ptr()),
+        reinterpret_cast<const cuFloatComplex*>(out1.data_ptr()),
+        reinterpret_cast<cuFloatComplex*>(out2.data_ptr()),
+        vec.numel());
+
+    return out2;
+}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("mhm_vec", &mhm_vec, "MHM vector (CUDA)");

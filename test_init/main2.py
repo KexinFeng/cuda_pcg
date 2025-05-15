@@ -4,7 +4,7 @@ import torch
 _C = load(
     name="_C",
     sources=["csrs/pybind.cpp", 
-             "csrs/cuda_pcg.cu"],
+             "csrs/cuda_pcg_cusparse.cu"],
     verbose=True
 )
 

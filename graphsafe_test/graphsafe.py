@@ -3,8 +3,7 @@ from torch.utils.cpp_extension import load
 _C = load(
     name="_C", 
     sources=["./graphsafe_test/device_func.cu",
-             "./graphsafe_test/mhm_vec_graphsafe.cu", 
-             "./graphsafe_test/utils.h"], 
+             "./graphsafe_test/mhm_vec_graphsafe.cu"], 
     verbose=True)
 
 Lx, Ltau, bs = 4, 4, 2
@@ -28,7 +27,7 @@ s = torch.cuda.Stream()
 s.wait_stream(torch.cuda.current_stream())
 with torch.cuda.stream(s):
     for _ in range(3):
-        tmp = _C.mhm_vec2(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+        tmp = _C.mhm_vec(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
         x.copy_(tmp)
     s.synchronize()
 torch.cuda.current_stream().wait_stream(s)
@@ -38,7 +37,7 @@ vec_static = vec.clone()
 boson_static = boson.clone()
 graph = torch.cuda.CUDAGraph()
 with torch.cuda.graph(graph):
-    out_graph = _C.mhm_vec2(boson_static, vec_static, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+    out_graph = _C.mhm_vec(boson_static, vec_static, out1, out2, Lx, Ltau, *BLOCK_SIZE)
     x.copy_(tmp)
 
 # Graph relay
