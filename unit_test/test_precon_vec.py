@@ -13,6 +13,7 @@ from hmc_sampler_batch import HmcSampler
 Lx, Ly, Ltau = 10, 10, 400
 Vs = Lx * Lx
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
+hmc.bs = 1
 boson = hmc.boson  # dtype
 
 R_u = hmc.draw_psudo_fermion()  # cdtype

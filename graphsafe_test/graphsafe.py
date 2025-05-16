@@ -28,6 +28,7 @@ NVCC_FLAGS += [f"-D_GLIBCXX_USE_CXX11_ABI={USE_CXX11_ABI}"]
 # Use NVCC threads to parallelize the build.
 nvcc_threads = int(os.getenv("NVCC_THREADS", 8))
 num_threads = max(2, min(len(os.sched_getaffinity(0)) - 2, nvcc_threads))
+num_threads = 1
 print(f'----->{num_threads}<------') 
 # os.sched_getaffinity(0) = num_cores + 2; ninja -j N  N_default=os.sched_getaffinity(0) + 2
 NVCC_FLAGS += ["--threads", str(num_threads)]
@@ -44,7 +45,6 @@ _C = load(
     extra_cflags=CXX_FLAGS,
     extra_cuda_cflags=NVCC_FLAGS,
     verbose=True,
-    build_directory="./graphsafe_test/build",
     is_python_module=True,
 )
 
@@ -52,8 +52,8 @@ end_time = time.time()  # End timer
 elapsed_time = end_time - start_time  # Calculate elapsed time
 print(f"Compilation Time: {elapsed_time:.2f} seconds")
 
-so_files = glob.glob("./graphsafe_test/build/*.so")
-dst_dir = os.path.expanduser("~/hmc/qed_fermion/qed_fermion/")
+so_files = glob.glob(os.path.expanduser("~/.cache/torch_extensions/py39_cu121/_C/_C.so"))
+dst_dir = os.path.expanduser("~/hmc/qed_fermion/qed_fermion/_C.cpython-39-x86_64-linux-gnu.so")
 for so_file in so_files:
     shutil.copy(so_file, dst_dir)
 print(f"Copied {len(so_files)} .so files to {dst_dir}")
@@ -80,7 +80,7 @@ s = torch.cuda.Stream()
 s.wait_stream(torch.cuda.current_stream())
 with torch.cuda.stream(s):
     for _ in range(3):
-        tmp = _C.mhm_vec(boson, vec, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+        tmp = _C.mhm_vec2(boson, vec, Lx, Ltau, *BLOCK_SIZE)
         x.copy_(tmp)
     s.synchronize()
 torch.cuda.current_stream().wait_stream(s)
@@ -90,7 +90,7 @@ vec_static = vec.clone()
 boson_static = boson.clone()
 graph = torch.cuda.CUDAGraph()
 with torch.cuda.graph(graph):
-    out_graph = _C.mhm_vec(boson_static, vec_static, out1, out2, Lx, Ltau, *BLOCK_SIZE)
+    out_graph = _C.mhm_vec2(boson_static, vec_static, Lx, Ltau, *BLOCK_SIZE)
     x.copy_(tmp)
 
 # Graph relay

@@ -14,6 +14,7 @@ Vs = Lx * Lx
 print(f'max boson idx at tau=0, {Vs*2}')
 hmc = HmcSampler(Lx=Lx, Ltau=Ltau)
 hmc.dtau = 0.1
+hmc.bs = 1
 hmc.reset()
 
 hmc.initialize_boson_test()

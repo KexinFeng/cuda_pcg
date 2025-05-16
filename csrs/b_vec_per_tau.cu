@@ -504,7 +504,9 @@ torch::Tensor b_vec_per_tau(
     // B_vec_mul
     dim3 block = {block_size_x, block_size_y};
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-        
+    cudaStreamCaptureStatus capture_status;
+    cudaStreamIsCapturing(stream, &capture_status);
+
     if (!interm_out_bool) {
         out = torch::empty_like(vec);
 
@@ -519,12 +521,14 @@ torch::Tensor b_vec_per_tau(
             std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
             throw std::runtime_error("CUDA kernel launch failed");
         }
-        err = cudaStreamSynchronize(stream);
-        if (err != cudaSuccess) {
-            std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
-            throw std::runtime_error("CUDA kernel execution failed");
+        if (capture_status != cudaStreamCaptureStatusActive &&
+        capture_status != cudaStreamCaptureStatusInvalidated) {
+            err = cudaStreamSynchronize(stream);
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+                throw std::runtime_error("CUDA kernel execution failed");
+            }
         }
-
     } else {
         out = torch::empty_like(vec);     
         out = out.repeat({6});
@@ -541,12 +545,14 @@ torch::Tensor b_vec_per_tau(
             std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
             throw std::runtime_error("CUDA kernel launch failed");
         }
-        err = cudaStreamSynchronize(stream);
-        if (err != cudaSuccess) {
-            std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
-            throw std::runtime_error("CUDA kernel execution failed");
+        if (capture_status != cudaStreamCaptureStatusActive &&
+        capture_status != cudaStreamCaptureStatusInvalidated) {
+            err = cudaStreamSynchronize(stream);
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+                throw std::runtime_error("CUDA kernel execution failed");
+            }
         }
     }
-    
     return out;
 }

@@ -167,11 +167,16 @@ torch::Tensor precon_vec(
         std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(kernel_err) << std::endl;
         throw std::runtime_error("CUDA kernel launch failed");
     }
-
-    cudaError_t err = cudaStreamSynchronize(stream);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
-        throw std::runtime_error("CUDA kernel execution failed");
+    
+    cudaStreamCaptureStatus capture_status;
+    cudaStreamIsCapturing(stream, &capture_status);
+    if (capture_status != cudaStreamCaptureStatusActive &&
+    capture_status != cudaStreamCaptureStatusInvalidated) {
+        cudaError_t err = cudaStreamSynchronize(stream);
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA stream synchronization failed: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA kernel execution failed");
+        }
     }
 
     return out;
