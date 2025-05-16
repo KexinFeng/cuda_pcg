@@ -1,4 +1,5 @@
-cd ~/mount_folder/cuda_pcg/;
+mkdir -p ~/mount_folder/cuda_pcg/qed_fermion_module
+cd ~/mount_folder/cuda_pcg/
 MAX_JOBS=${1:-2} python setup.py build_ext --inplace || { echo "Build failed. Exiting."; exit 1; }
 sleep 2  # Wait for 2 seconds to ensure build completion
 python unit_test/test_precon_vec.py
