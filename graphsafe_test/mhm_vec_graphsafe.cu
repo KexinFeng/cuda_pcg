@@ -6,7 +6,7 @@
 #include <c10/util/complex.h>
 #include "device_func.cu"
   
-torch::Tensor mhm_vec2(
+torch::Tensor mhm_vec(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
     const int64_t Lx,
@@ -159,7 +159,7 @@ __global__ void dummy_vec_sub_kernel(const cuFloatComplex* a, const cuFloatCompl
     }
 }
 
-torch::Tensor mhm_vec(
+torch::Tensor mhm_vec2(
     const torch::Tensor& boson,   // [bs, Ltau * Vs * 2] float32
     const torch::Tensor& vec,     // [bs, Ltau * Vs] complex64
     torch::Tensor& out1,
@@ -212,6 +212,6 @@ torch::Tensor mhm_vec(
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("mhm_vec", &mhm_vec, "MHM vector (CUDA)");
     m.def("mhm_vec2", &mhm_vec2, "MHM vector (CUDA)");
+    m.def("mhm_vec", &mhm_vec, "MHM vector (CUDA)");
 }

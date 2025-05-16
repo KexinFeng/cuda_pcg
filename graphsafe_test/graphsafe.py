@@ -80,7 +80,7 @@ s = torch.cuda.Stream()
 s.wait_stream(torch.cuda.current_stream())
 with torch.cuda.stream(s):
     for _ in range(3):
-        tmp = _C.mhm_vec2(boson, vec, Lx, Ltau, *BLOCK_SIZE)
+        tmp = _C.mhm_vec(boson, vec, Lx, Ltau, *BLOCK_SIZE)
         x.copy_(tmp)
     s.synchronize()
 torch.cuda.current_stream().wait_stream(s)
@@ -90,7 +90,7 @@ vec_static = vec.clone()
 boson_static = boson.clone()
 graph = torch.cuda.CUDAGraph()
 with torch.cuda.graph(graph):
-    out_graph = _C.mhm_vec2(boson_static, vec_static, Lx, Ltau, *BLOCK_SIZE)
+    out_graph = _C.mhm_vec(boson_static, vec_static, Lx, Ltau, *BLOCK_SIZE)
     x.copy_(tmp)
 
 # Graph relay
