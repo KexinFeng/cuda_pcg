@@ -13,7 +13,7 @@
 // TILE_SIZE = BLOCK_WIDTH + 2*PAD
 // STENCIL_SIZE is equal to BLOCK_WIDTH in this case
 // across the batch, stencil is shared.
-#define BLOCK_WIDTH 8
+#define BLOCK_WIDTH 16
 #define PAD 6
 #define TILE_SIZE (BLOCK_WIDTH + 2 * PAD)
 #define STENCIL_SIZE BLOCK_WIDTH
