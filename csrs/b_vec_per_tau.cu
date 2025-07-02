@@ -488,6 +488,37 @@ torch::Tensor b_vec_per_tau(
     torch::Tensor out;
 
     int64_t Vs = Lx * Lx;
+    
+    if (Lx > 50){
+        cudaError_t attr_err;
+        int device;
+        cudaDeviceProp prop;
+        cudaGetDevice(&device);
+        cudaGetDeviceProperties(&prop, device);
+        if (prop.sharedMemPerBlockOptin >= 74000) {
+            attr_err = cudaFuncSetAttribute(
+                cuda_pcg::b_vec_per_tau_kernel,
+                cudaFuncAttributeMaxDynamicSharedMemorySize,
+                74000  // ← 73 KB in bytes, Lx=68
+            );
+            if (attr_err != cudaSuccess) {
+                std::cerr << "Failed to set shared memory attribute for b_vec_per_tau_kernel: " << cudaGetErrorString(attr_err) << std::endl;
+                throw std::runtime_error("cudaFuncSetAttribute failed");
+            }
+            attr_err = cudaFuncSetAttribute(
+                cuda_pcg::b_vec_per_tau_interm_out_kernel,
+                cudaFuncAttributeMaxDynamicSharedMemorySize,
+                74000  // ← 73 KB in bytes, Lx=68
+            );
+            if (attr_err != cudaSuccess) {
+                std::cerr << "Failed to set shared memory attribute for b_vec_per_tau_interm_out_kernel: " << cudaGetErrorString(attr_err) << std::endl;
+                throw std::runtime_error("cudaFuncSetAttribute failed");
+            }
+        } else {
+            std::cerr << "Device does not support requested dynamic shared memory size (74000 bytes)." << std::endl;
+            throw std::runtime_error("Insufficient shared memory for requested kernel launch.");
+        }
+    }
 
     using scalar_t = cuFloatComplex;
     if (vec.dtype() == at::ScalarType::ComplexFloat) {
