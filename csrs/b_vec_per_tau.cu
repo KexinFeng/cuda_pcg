@@ -488,6 +488,15 @@ torch::Tensor b_vec_per_tau(
     torch::Tensor out;
 
     int64_t Vs = Lx * Lx;
+
+    using scalar_t = cuFloatComplex;
+    if (vec.dtype() == at::ScalarType::ComplexFloat) {
+        using scalar_t = cuFloatComplex; 
+    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
+        using scalar_t = cuDoubleComplex;
+    } else {
+        throw std::invalid_argument("Unsupported data type");
+    }
     
     if (Lx > 50){
         cudaError_t attr_err;
@@ -497,7 +506,7 @@ torch::Tensor b_vec_per_tau(
         cudaGetDeviceProperties(&prop, device);
         if (prop.sharedMemPerBlockOptin >= 74000) {
             attr_err = cudaFuncSetAttribute(
-                cuda_pcg::b_vec_per_tau_kernel,
+                cuda_pcg::b_vec_per_tau_kernel<scalar_t>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 74000  // ← 73 KB in bytes, Lx=68
             );
@@ -506,7 +515,7 @@ torch::Tensor b_vec_per_tau(
                 throw std::runtime_error("cudaFuncSetAttribute failed");
             }
             attr_err = cudaFuncSetAttribute(
-                cuda_pcg::b_vec_per_tau_interm_out_kernel,
+                cuda_pcg::b_vec_per_tau_interm_out_kernel<scalar_t>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 74000  // ← 73 KB in bytes, Lx=68
             );
@@ -518,15 +527,6 @@ torch::Tensor b_vec_per_tau(
             std::cerr << "Device does not support requested dynamic shared memory size (74000 bytes)." << std::endl;
             throw std::runtime_error("Insufficient shared memory for requested kernel launch.");
         }
-    }
-
-    using scalar_t = cuFloatComplex;
-    if (vec.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = cuFloatComplex; 
-    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
-        using scalar_t = cuDoubleComplex;
-    } else {
-        throw std::invalid_argument("Unsupported data type");
     }
 
     cudaError_t kernel_err;
@@ -541,7 +541,7 @@ torch::Tensor b_vec_per_tau(
     if (!interm_out_bool) {
         out = torch::empty_like(vec);
 
-        cuda_pcg::b_vec_per_tau_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+        cuda_pcg::b_vec_per_tau_kernel<scalar_t><<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
             reinterpret_cast<float*>(boson.data_ptr()),
             reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
             reinterpret_cast<scalar_t*>(out.data_ptr()),
@@ -565,7 +565,7 @@ torch::Tensor b_vec_per_tau(
         out = out.repeat({6});
         out = out.view({6, -1});
 
-        cuda_pcg::b_vec_per_tau_interm_out_kernel<<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+        cuda_pcg::b_vec_per_tau_interm_out_kernel<scalar_t><<<1, block, 2 * Vs * sizeof(scalar_t), stream>>>(
             reinterpret_cast<float*>(boson.data_ptr()),
             reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
             reinterpret_cast<scalar_t*>(out.data_ptr()),

@@ -331,6 +331,15 @@ torch::Tensor mhm_vec(
     int64_t Vs = Lx * Lx;
     int64_t Ltau = vec.size(1) / Vs; 
 
+    using scalar_t = cuFloatComplex;
+    if (vec.dtype() == at::ScalarType::ComplexFloat) {
+        using scalar_t = cuFloatComplex; 
+    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
+        using scalar_t = cuDoubleComplex;
+    } else {
+        throw std::invalid_argument("Unsupported data type");
+    }
+
     if (Lx > 50){
         cudaError_t attr_err;
         int device;
@@ -339,7 +348,7 @@ torch::Tensor mhm_vec(
         cudaGetDeviceProperties(&prop, device);
         if (prop.sharedMemPerBlockOptin >= 74000) {
             attr_err = cudaFuncSetAttribute(
-                cuda_pcg::mhm_vec_kernel,
+                cuda_pcg::mhm_vec_kernel<scalar_t>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 74000  // ← 73 KB in bytes, Lx=68
             );
@@ -353,15 +362,6 @@ torch::Tensor mhm_vec(
         }
     }
 
-    using scalar_t = cuFloatComplex;
-    if (vec.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = cuFloatComplex; 
-    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
-        using scalar_t = cuDoubleComplex;
-    } else {
-        throw std::invalid_argument("Unsupported data type");
-    }
-
     cudaError_t kernel_err;
     cudaError_t err;
 
@@ -373,7 +373,7 @@ torch::Tensor mhm_vec(
     cudaStreamIsCapturing(stream, &capture_status);
 
     // B_vec_mul
-    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<scalar_t><<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
@@ -393,7 +393,7 @@ torch::Tensor mhm_vec(
     }
 
     // vec_minus_B_vec
-    cuda_pcg::vec_minus_B_vec_kernel<<<grid, block, 0, stream>>>(
+    cuda_pcg::vec_minus_B_vec_kernel<scalar_t><<<grid, block, 0, stream>>>(
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
         reinterpret_cast<scalar_t*>(out2.data_ptr()),
@@ -416,7 +416,7 @@ torch::Tensor mhm_vec(
 
     // B_vec_mul
     tau_roll = 1;
-    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<scalar_t><<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
@@ -437,7 +437,7 @@ torch::Tensor mhm_vec(
     }
 
     // vec_minus_B_vec
-    cuda_pcg::vec_minus_B_vec_2_kernel<<<grid, block, 0, stream>>>(
+    cuda_pcg::vec_minus_B_vec_2_kernel<scalar_t><<<grid, block, 0, stream>>>(
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
         reinterpret_cast<scalar_t*>(out2.data_ptr()),
@@ -486,6 +486,15 @@ torch::Tensor mh_vec(
     int64_t Vs = Lx * Lx;
     int64_t Ltau = vec.size(1) / Vs; 
 
+    using scalar_t = cuFloatComplex;
+    if (vec.dtype() == at::ScalarType::ComplexFloat) {
+        using scalar_t = cuFloatComplex; 
+    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
+        using scalar_t = cuDoubleComplex;
+    } else {
+        throw std::invalid_argument("Unsupported data type");
+    }
+    
     if (Lx > 50){
         cudaError_t attr_err;
         int device;
@@ -494,7 +503,7 @@ torch::Tensor mh_vec(
         cudaGetDeviceProperties(&prop, device);
         if (prop.sharedMemPerBlockOptin >= 74000) {
             attr_err = cudaFuncSetAttribute(
-                cuda_pcg::mhm_vec_kernel,
+                cuda_pcg::mhm_vec_kernel<scalar_t>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 74000  // ← 73 KB in bytes, Lx=68
             );
@@ -508,15 +517,6 @@ torch::Tensor mh_vec(
         }
     }
 
-    using scalar_t = cuFloatComplex;
-    if (vec.dtype() == at::ScalarType::ComplexFloat) {
-        using scalar_t = cuFloatComplex; 
-    } else if (vec.dtype() == at::ScalarType::ComplexDouble) {
-        using scalar_t = cuDoubleComplex;
-    } else {
-        throw std::invalid_argument("Unsupported data type");
-    }
-
     cudaError_t kernel_err;
     cudaError_t err;
 
@@ -528,7 +528,7 @@ torch::Tensor mh_vec(
 
     // B_vec_mul
     int64_t tau_roll = 1;
-    cuda_pcg::mhm_vec_kernel<<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
+    cuda_pcg::mhm_vec_kernel<scalar_t><<<grid, block, 2 * Vs * sizeof(scalar_t), stream>>>(
         reinterpret_cast<float*>(boson.data_ptr()),
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
@@ -549,7 +549,7 @@ torch::Tensor mh_vec(
     }
 
     // vec_minus_B_vec
-    cuda_pcg::vec_minus_B_vec_2_kernel<<<grid, block, 0, stream>>>(
+    cuda_pcg::vec_minus_B_vec_2_kernel<scalar_t><<<grid, block, 0, stream>>>(
         reinterpret_cast<scalar_t*>(vec_in.data_ptr()),
         reinterpret_cast<scalar_t*>(out1.data_ptr()),
         reinterpret_cast<scalar_t*>(out2.data_ptr()),
